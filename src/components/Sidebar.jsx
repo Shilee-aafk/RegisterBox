@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   UserCog, Calendar, DollarSign, Zap, Settings,
-  ChevronLeft, ChevronRight, Box
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
@@ -33,11 +33,11 @@ export default function Sidebar() {
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">
+        <div className="sidebar-logo-icon" style={{ background: 'transparent', transform: 'translateY(-2px)' }}>
           <img 
-            src={config.appearance.modoOscuroAuto ? '/icon-negativo.png' : '/icon.png'} 
+            src={config.appearance.modoOscuroAuto ? "icon-negativo256.png" : "icon256.png"} 
             alt="GestorPro" 
-            style={{ width: '100%', height: '100%', borderRadius: 'inherit', objectFit: 'contain' }} 
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
           />
         </div>
         {!collapsed && (

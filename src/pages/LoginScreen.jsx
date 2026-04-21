@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { LogIn, KeyRound, ShieldCheck, Box, TrendingUp } from 'lucide-react';
+import { LogIn, KeyRound, ShieldCheck } from 'lucide-react';
 
 export default function LoginScreen() {
   const { config, processLogin, updateEmpleado, forceLogin } = useApp();
@@ -81,14 +81,14 @@ export default function LoginScreen() {
         <div style={{ position: 'absolute', bottom: -100, left: -100, width: 400, height: 400, background: 'rgba(255,255,255,.05)', borderRadius: '50%' }} />
         
         <div style={{ 
-          width: 120, height: 120, borderRadius: 24, marginBottom: 24, 
-          background: 'var(--primary-color, #0d9488)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
-          boxShadow: '0 10px 25px rgba(0,0,0,.2)' 
+          width: 140, height: 140, marginBottom: 16, 
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <Box size={120} color={config.appearance.modoOscuroAuto ? '#fff' : '#000'} strokeWidth={1.0} />
-          <div style={{ position: 'absolute', width: 20, height: 20, background: 'var(--primary-color, #0d9488)', borderRadius: '50%', marginTop: 40 }} />
-          <TrendingUp size={60} color={config.appearance.modoOscuroAuto ? '#fff' : '#000'} strokeWidth={2} style={{ position: 'absolute', marginTop: 30 }} />
+          <img 
+            src={config.appearance.modoOscuroAuto ? "icon-negativo256.png" : "icon256.png"} 
+            alt="Logo" 
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+          />
         </div>
         <h1 style={{ color: '#fff', fontSize: 36, fontWeight: 800, marginBottom: 8 }}>{config?.biz?.nombre || 'GestorPro'}</h1>
         <p style={{ color: 'rgba(255,255,255,.8)', fontSize: 15, fontWeight: 500 }}>Sistema Inteligente de Gestión</p>
