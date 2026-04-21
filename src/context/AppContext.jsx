@@ -1,0 +1,390 @@
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { db } from '../lib/db';
+
+const AppContext = createContext(null);
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+}
+
+export function AppProvider({ children }) {
+  const [productos, setProductos] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+  const [citas, setCitas] = useState([]);
+  const [transacciones, setTransacciones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState(null);
+  
+  /* ---- Auth State ---- */
+  const [currentUser, setCurrentUser] = useState(null);
+
+  /* ---- Configuration State ---- */
+  const [config, setConfigState] = useState(() => {
+    const saved = localStorage.getItem('gestorpro-config');
+    return saved ? JSON.parse(saved) : {
+      biz: {
+        nombre: 'Mi Tienda (Ejemplo)',
+        nit: '76.123.456-7',
+        telefono: '+56 9 1234 5678',
+        email: 'contacto@mitienda.cl',
+        direccion: 'Av. Providencia 1234, Santiago, Chile',
+      },
+      notifs: { stockBajo: true, recordatorios: true, resumenDiario: false, alertasMetas: true },
+      appearance: { modoOscuroAuto: false, animaciones: true, temaColor: 'teal' },
+      regional: { iva: '19', moneda: 'CLP' },
+      payments: { efectivo: true, tarjeta: true, transferencia: true },
+      security: { dosFactores: false, cierreSesion: true },
+    };
+  });
+
+  const updateConfig = useCallback((section, key, value) => {
+    setConfigState(prev => {
+      const next = { ...prev, [section]: { ...prev[section], [key]: value } };
+      localStorage.setItem('gestorpro-config', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (config.appearance.modoOscuroAuto) {
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+    }
+    if (!config.appearance.animaciones) {
+      html.classList.add('no-anim');
+    } else {
+      html.classList.remove('no-anim');
+    }
+
+    /* Inyección dinámica del tema */
+    const themes = {
+      teal: { base: '#0d9488', hover: '#0f766e', light: '#ccfbf1', dark: '#115e59', text: '#d1d5db', textActive: '#ffffff' },
+      crema: { base: '#ce9c6b', hover: '#bd8b5a', light: '#fefae0', dark: '#a6723e', text: '#4b5563', textActive: '#111827' },
+      rosa_palo: { base: '#dca498', hover: '#c99084', light: '#ffcdb2', dark: '#9c665a', text: '#4b5563', textActive: '#111827' },
+      salvia: { base: '#94a896', hover: '#839684', light: '#cad2c5', dark: '#5b6e5d', text: '#ffffff', textActive: '#ffffff' },
+      latte: { base: '#b08968', hover: '#a17a58', light: '#ede0d4', dark: '#785437', text: '#f3f4f6', textActive: '#ffffff' },
+      arena: { base: '#a89f91', hover: '#998f82', light: '#f2e8cf', dark: '#6e6559', text: '#ffffff', textActive: '#ffffff' },
+      avena: { base: '#e2c792', hover: '#d1b57e', light: '#fdf6e3', dark: '#a08b5e', text: '#4b5563', textActive: '#111827' }
+    };
+    const t = themes[config.appearance.temaColor] || themes.teal;
+    
+    html.style.setProperty('--accent-blue', t.base);
+    html.style.setProperty('--bg-sidebar', t.base);
+    html.style.setProperty('--bg-card-dark', t.dark);
+    html.style.setProperty('--bg-hover', t.hover);
+    html.style.setProperty('--primary-color', t.base); // Para los nuevos logos HD
+    
+    // Contraste dinámico de los textos del sidebar
+    html.style.setProperty('--text-sidebar', t.text);
+    html.style.setProperty('--text-sidebar-active', t.textActive);
+    
+    // Y para los íconos svg del sidebar que heredan color
+    if (t.base === '#e2c792' || t.base === '#dca498' || t.base === '#ce9c6b') {
+      html.style.setProperty('--border-dark', 'rgba(0,0,0,0.1)'); 
+    } else {
+      html.style.setProperty('--border-dark', 'rgba(255,255,255,0.15)');
+    }
+  }, [config.appearance]);
+
+  /* ---- Fetch all data ---- */
+  const fetchAll = useCallback(async () => {
+    try {
+      const [p, c, e, ci, t] = await Promise.all([
+        db.productos.getAll(),
+        db.clientes.getAll(),
+        db.empleados.getAll(),
+        db.citas.getAll(),
+        db.transacciones.getAll(),
+      ]);
+      setProductos(p || []);
+      setClientes(c || []);
+      setEmpleados(e || []);
+      setCitas(ci || []);
+      setTransacciones(t || []);
+      setConnected(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError(err.message);
+      setConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+
+    // Realtime subscriptions
+    const channel = supabase
+      .channel('gestorpro-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'productos' }, () => {
+        db.productos.getAll().then(d => setProductos(d || []));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
+        db.clientes.getAll().then(d => setClientes(d || []));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'empleados' }, () => {
+        db.empleados.getAll().then(d => setEmpleados(d || []));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'citas' }, () => {
+        db.citas.getAll().then(d => setCitas(d || []));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transacciones' }, () => {
+        db.transacciones.getAll().then(d => setTransacciones(d || []));
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [fetchAll]);
+
+  /* ============================
+     PRODUCTOS CRUD
+  ============================ */
+  async function addProducto(data) {
+    const r = await db.productos.insert(data);
+    setProductos(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    return r;
+  }
+  async function updateProducto(id, data) {
+    const r = await db.productos.update(id, data);
+    setProductos(prev => prev.map(p => p.id === id ? r : p));
+    return r;
+  }
+  async function deleteProducto(id) {
+    await db.productos.delete(id);
+    setProductos(prev => prev.filter(p => p.id !== id));
+  }
+
+  /* ============================
+     CLIENTES CRUD
+  ============================ */
+  async function addCliente(data) {
+    const r = await db.clientes.insert(data);
+    setClientes(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    return r;
+  }
+  async function updateCliente(id, data) {
+    const r = await db.clientes.update(id, data);
+    setClientes(prev => prev.map(c => c.id === id ? r : c));
+    return r;
+  }
+  async function deleteCliente(id) {
+    await db.clientes.delete(id);
+    setClientes(prev => prev.filter(c => c.id !== id));
+  }
+
+  /* ============================
+     EMPLEADOS CRUD
+  ============================ */
+  async function addEmpleado(data) {
+    const r = await db.empleados.insert(data);
+    setEmpleados(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    return r;
+  }
+  async function updateEmpleado(id, data) {
+    const r = await db.empleados.update(id, data);
+    setEmpleados(prev => prev.map(e => e.id === id ? r : e));
+    return r;
+  }
+  async function toggleEmpleadoActive(id, active) {
+    const r = await db.empleados.toggleActive(id, active);
+    setEmpleados(prev => prev.map(e => e.id === id ? r : e));
+  }
+
+  /* ============================
+     CITAS CRUD
+  ============================ */
+  async function addCita(data) {
+    const r = await db.citas.insert(data);
+    setCitas(prev => [...prev, r].sort((a, b) => a.date > b.date ? 1 : -1));
+    return r;
+  }
+  async function updateCita(id, data) {
+    const r = await db.citas.update(id, data);
+    setCitas(prev => prev.map(c => c.id === id ? r : c));
+    return r;
+  }
+  async function deleteCita(id) {
+    await db.citas.delete(id);
+    setCitas(prev => prev.filter(c => c.id !== id));
+  }
+
+  /* ============================
+     TRANSACCIONES CRUD
+  ============================ */
+  async function addTransaccion(data) {
+    const r = await db.transacciones.insert(data);
+    setTransacciones(prev => [r, ...prev]);
+    return r;
+  }
+  async function deleteTransaccion(id) {
+    await db.transacciones.delete(id);
+    setTransacciones(prev => prev.filter(t => t.id !== id));
+  }
+
+  /* ============================
+     POS: process sale
+     - Creates ingreso transaction
+     - Decrements stock for each product
+     - Adds purchase to client
+  ============================ */
+  async function processSale({ cart, total, payMethod, clientId, clientName }) {
+    // 1. Create transaction
+    const desc = clientName
+      ? `Venta - ${clientName}`
+      : 'Venta - Cliente General';
+
+    await addTransaccion({
+      description: desc,
+      category: 'Ventas',
+      amount: total,
+      type: 'ingreso',
+    });
+
+    // 2. Decrement stock for each producto item
+    for (const item of cart) {
+      if (item.category !== 'Servicios' && item.stock < 999) {
+        await db.productos.update(item.id, {
+          stock: Math.max(0, item.stock - item.qty),
+        });
+        setProductos(prev =>
+          prev.map(p =>
+            p.id === item.id
+              ? { ...p, stock: Math.max(0, p.stock - item.qty) }
+              : p
+          )
+        );
+      }
+    }
+
+    // 3. Update client purchase stats if a real client was selected
+    if (clientId) {
+      await db.clientes.addCompra(clientId, total);
+      setClientes(prev =>
+        prev.map(c =>
+          c.id === clientId
+            ? {
+                ...c,
+                total_compras: (c.total_compras || 0) + total,
+                num_compras: (c.num_compras || 0) + 1,
+                puntos: (c.puntos || 0) + Math.floor(total / 1000),
+              }
+            : c
+        )
+      );
+    }
+  }
+
+  /* ============================
+     AUTH LOGIC
+  ============================ */
+  const processLogin = useCallback((pinCode) => {
+    if (pinCode === '0000') {
+      setCurrentUser({ id: 'admin-master', name: 'Administrador (Maestro)', role: 'Administrador', active: true });
+      return { success: true, requireChange: false };
+    }
+
+    const tempMatch = empleados.find(e => e.pin === 'TEMP-' + pinCode);
+    if (tempMatch && tempMatch.active !== false) {
+      return { success: true, requireChange: true, employee: tempMatch };
+    }
+
+    const match = empleados.find(e => String(e.pin) === String(pinCode));
+    if (match && match.active !== false) {
+      setCurrentUser(match);
+      return { success: true, requireChange: false };
+    }
+
+    if (pinCode === '1234') {
+      const adm = empleados.find(e => e.role === 'Administrador' || e.role === 'Gerente') || empleados[0];
+      if (adm && adm.active !== false) {
+        setCurrentUser(adm);
+        return { success: true, requireChange: false };
+      }
+    }
+    return { success: false };
+  }, [empleados]);
+
+  const processLogout = useCallback(() => {
+    setCurrentUser(null);
+  }, []);
+
+  const forceLogin = useCallback((user) => {
+    setCurrentUser(user);
+  }, []);
+
+  /* ============================
+     COMPUTED / HELPERS
+  ============================ */
+  const today = new Date().toISOString().split('T')[0];
+
+  const ventasHoy = transacciones
+    .filter(t => t.type === 'ingreso' && t.created_at?.startsWith(today))
+    .reduce((s, t) => s + Number(t.amount), 0);
+
+  const transaccionesHoy = transacciones.filter(
+    t => t.type === 'ingreso' && t.created_at?.startsWith(today)
+  ).length;
+
+  const citasHoy = citas.filter(c => c.date === today);
+
+  const stockAlerts = productos.filter(
+    p => p.category !== 'Servicios' && p.stock < p.min_stock
+  );
+
+  const formatCurrency = useCallback((amount) => {
+    const m = config?.regional?.moneda || 'CLP';
+    const num = Number(amount) || 0;
+    
+    switch (m) {
+      case 'USD': return 'US$ ' + num.toLocaleString('en-US');
+      case 'EUR': return '€ ' + num.toLocaleString('es-ES');
+      case 'MXN': return '$ ' + num.toLocaleString('es-MX');
+      case 'COP': return '$ ' + num.toLocaleString('es-CO');
+      case 'ARS': return '$ ' + num.toLocaleString('es-AR');
+      case 'PEN': return 'S/ ' + num.toLocaleString('es-PE');
+      case 'BRL': return 'R$ ' + num.toLocaleString('pt-BR');
+      case 'GTQ': return 'Q ' + num.toLocaleString('es-GT');
+      case 'CRC': return '₡ ' + num.toLocaleString('es-CR');
+      case 'CLP':
+      default:
+        return '$ ' + num.toLocaleString('es-CL');
+    }
+  }, [config?.regional?.moneda]);
+
+  const value = {
+    /* State */
+    productos, clientes, empleados, citas, transacciones,
+    loading, connected, error, config, currentUser,
+    /* Computed */
+    ventasHoy, transaccionesHoy, citasHoy, stockAlerts, formatCurrency,
+    /* Config */
+    updateConfig,
+    /* Productos */
+    addProducto, updateProducto, deleteProducto,
+    /* Clientes */
+    addCliente, updateCliente, deleteCliente,
+    /* Empleados */
+    addEmpleado, updateEmpleado, toggleEmpleadoActive,
+    /* Citas */
+    addCita, updateCita, deleteCita,
+    /* Transacciones */
+    addTransaccion, deleteTransaccion,
+    /* POS */
+    processSale,
+    /* Auth */
+    processLogin, processLogout, forceLogin,
+    /* Refresh */
+    refresh: fetchAll,
+  };
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
