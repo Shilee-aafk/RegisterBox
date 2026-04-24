@@ -127,6 +127,10 @@
 /* Day column */
 .planner-tl-day-col { position: relative; border-right: 1px solid #f0f0f0; }
 .planner-tl-day-col:last-child { border-right: none; }
+.planner-tl-day-col.assigning .planner-shift-block {
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.planner-tl-day-col.assigning .planner-preview-block { z-index: 6; }
 
 /* Gridlines */
 .planner-tl-gridline {

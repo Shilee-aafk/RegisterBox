@@ -139,6 +139,7 @@ export default function Empleados() {
 
     // Clear selection state immediately
     setSeleccionTurno(null);
+    setEmpSeleccionado(null);
 
     try {
       const { data, error } = await supabase
@@ -550,7 +551,7 @@ export default function Empleados() {
                   </div>
 
                   {DAYS.map(({ key }) => (
-                    <div key={key} className="planner-tl-day-col">
+                    <div key={key} className={`planner-tl-day-col${empSeleccionado ? ' assigning' : ''}`}>
                       {HOURS.map(h => (
                         <div
                           key={h}
