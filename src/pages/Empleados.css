@@ -1,0 +1,377 @@
+/* =========================================================
+   Planificador Semanal — Drag & Drop Shift Planner
+   ========================================================= */
+
+/* ---------- Section wrapper ---------- */
+.planner-section {
+  margin-top: 24px;
+}
+
+.planner-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.planner-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.planner-section-title .planner-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #1f9191 0%, #0f6b6b 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(31, 145, 145, 0.3);
+}
+
+.planner-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent-red-light);
+  color: var(--accent-red);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.planner-clear-btn:hover {
+  background: var(--accent-red);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+}
+
+/* ---------- Two-column planner layout ---------- */
+.planner-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  min-height: 420px;
+}
+
+/* ---------- Left: Draggable employees panel ---------- */
+.planner-employees {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.planner-employees-header {
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.planner-employees-header h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.planner-employees-header p {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.planner-employees-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.planner-emp-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: #f9fafb;
+  border: 1.5px solid var(--border);
+  margin-bottom: 6px;
+  cursor: grab;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.planner-emp-card:hover {
+  background: var(--accent-blue-light);
+  border-color: var(--accent-blue);
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(31, 145, 145, 0.15);
+}
+
+.planner-emp-card:active {
+  cursor: grabbing;
+  transform: scale(0.97);
+  box-shadow: 0 4px 16px rgba(31, 145, 145, 0.25);
+}
+
+.planner-emp-card.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+  transform: scale(0.95);
+}
+
+.planner-emp-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.planner-emp-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.planner-emp-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planner-emp-role {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.planner-emp-grip {
+  color: var(--text-muted);
+  opacity: 0.4;
+  transition: opacity var(--transition);
+}
+
+.planner-emp-card:hover .planner-emp-grip {
+  opacity: 1;
+  color: var(--accent-blue);
+}
+
+/* ---------- Right: Weekly grid ---------- */
+.planner-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+}
+
+.planner-day-col {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  min-height: 350px;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.planner-day-col.drag-over {
+  border-color: var(--accent-blue);
+  background: linear-gradient(180deg, rgba(31, 145, 145, 0.06) 0%, rgba(31, 145, 145, 0.02) 100%);
+  box-shadow: 0 0 0 3px rgba(31, 145, 145, 0.12), 0 4px 16px rgba(31, 145, 145, 0.1);
+  transform: translateY(-2px);
+}
+
+.planner-day-header {
+  padding: 12px 10px;
+  text-align: center;
+  border-bottom: 1.5px solid #f3f4f6;
+  background: #f9fafb;
+  transition: background var(--transition);
+}
+
+.planner-day-col.drag-over .planner-day-header {
+  background: rgba(31, 145, 145, 0.08);
+}
+
+.planner-day-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.planner-day-col.drag-over .planner-day-name {
+  color: var(--accent-blue);
+}
+
+.planner-day-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.planner-day-body {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 200px;
+  transition: background var(--transition);
+}
+
+.planner-day-col.drag-over .planner-day-body {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    rgba(31, 145, 145, 0.03) 8px,
+    rgba(31, 145, 145, 0.03) 16px
+  );
+}
+
+/* Empty state per day */
+.planner-day-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  opacity: 0.5;
+  padding: 12px 6px;
+  text-align: center;
+  border: 1.5px dashed #e5e7eb;
+  border-radius: var(--radius-md);
+  margin: 4px;
+  transition: all var(--transition);
+}
+
+.planner-day-col.drag-over .planner-day-empty {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  opacity: 0.8;
+  background: rgba(31, 145, 145, 0.04);
+}
+
+/* ---------- Assigned employee chip inside day ---------- */
+.planner-assigned-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, #f0fdfa 0%, #e0f7f4 100%);
+  border: 1px solid #99f6e4;
+  border-radius: var(--radius-md);
+  animation: chipAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all var(--transition);
+}
+
+.planner-assigned-chip:hover {
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+  transform: translateY(-1px);
+}
+
+@keyframes chipAppear {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.planner-chip-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.planner-chip-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planner-chip-remove {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.planner-assigned-chip:hover .planner-chip-remove {
+  opacity: 1;
+}
+
+.planner-chip-remove:hover {
+  background: var(--accent-red-light);
+  color: var(--accent-red);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1200px) {
+  .planner-layout {
+    grid-template-columns: 200px 1fr;
+  }
+}
+
+@media (max-width: 1000px) {
+  .planner-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .planner-week-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .planner-week-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

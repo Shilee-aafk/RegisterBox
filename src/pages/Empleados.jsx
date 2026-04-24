@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet } from 'lucide-react';
+import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, GripVertical, Trash2, CalendarDays } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import './Empleados.css';
 
 
 const ROLE_COLORS = {
@@ -42,6 +43,73 @@ export default function Empleados() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // ====== Planificador Semanal (Drag & Drop) ======
+  const empleadosDisponibles = [
+    { id: 'emp-1', name: 'Juan Pérez', role: 'Cajero' },
+    { id: 'emp-2', name: 'María López', role: 'Personal' },
+    { id: 'emp-3', name: 'Pedro García', role: 'Gerente' },
+    { id: 'emp-4', name: 'Ana Martínez', role: 'Administrador' },
+    { id: 'emp-5', name: 'Carlos Rodríguez', role: 'Cajero' },
+    { id: 'emp-6', name: 'Laura Sánchez', role: 'Personal' },
+  ];
+
+  const [horarioSemanal, setHorarioSemanal] = useState({
+    lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [],
+  });
+  const [dragOverDay, setDragOverDay] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+
+  function handleDragStart(e, emp) {
+    e.dataTransfer.setData('application/json', JSON.stringify({ id: emp.id, name: emp.name, role: emp.role }));
+    e.dataTransfer.effectAllowed = 'copy';
+    setDraggingId(emp.id);
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDragOverDay(null);
+  }
+
+  function handleDragOver(e, dayKey) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragOverDay(dayKey);
+  }
+
+  function handleDragLeave(e, dayKey) {
+    // Only clear if we're actually leaving the day column
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverDay(null);
+    }
+  }
+
+  function handleDrop(e, dayKey) {
+    e.preventDefault();
+    setDragOverDay(null);
+    setDraggingId(null);
+    try {
+      const empData = JSON.parse(e.dataTransfer.getData('application/json'));
+      setHorarioSemanal(prev => {
+        // Prevent duplicates in the same day
+        if (prev[dayKey].some(emp => emp.id === empData.id)) return prev;
+        return { ...prev, [dayKey]: [...prev[dayKey], empData] };
+      });
+    } catch { /* ignore bad data */ }
+  }
+
+  function handleRemoveFromDay(dayKey, empId) {
+    setHorarioSemanal(prev => ({
+      ...prev,
+      [dayKey]: prev[dayKey].filter(emp => emp.id !== empId),
+    }));
+  }
+
+  function handleClearPlanner() {
+    setHorarioSemanal({ lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [] });
+  }
+
+  const totalAsignaciones = Object.values(horarioSemanal).reduce((s, arr) => s + arr.length, 0);
 
   const totalNomina = empleados.reduce((s, e) => s + e.salary, 0);
   const roles = [...new Set(empleados.map(e => e.role))].length;
@@ -251,6 +319,105 @@ export default function Empleados() {
               </div>
             </>
           )}
+        </div>
+      </div>
+
+      {/* ====== Planificador Semanal ====== */}
+      <div className="planner-section">
+        <div className="planner-section-header">
+          <div className="planner-section-title">
+            <div className="planner-icon">
+              <CalendarDays size={18} />
+            </div>
+            Planificador Semanal
+            {totalAsignaciones > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>
+                — {totalAsignaciones} asignación{totalAsignaciones !== 1 ? 'es' : ''}
+              </span>
+            )}
+          </div>
+          {totalAsignaciones > 0 && (
+            <button className="planner-clear-btn" onClick={handleClearPlanner} id="btn-clear-planner">
+              <Trash2 size={13} /> Limpiar Todo
+            </button>
+          )}
+        </div>
+
+        <div className="planner-layout">
+          {/* Left: Draggable Employee List */}
+          <div className="planner-employees">
+            <div className="planner-employees-header">
+              <h3>Empleados</h3>
+              <p>Arrastra al calendario →</p>
+            </div>
+            <div className="planner-employees-list">
+              {empleadosDisponibles.map(emp => (
+                <div
+                  key={emp.id}
+                  className={`planner-emp-card${draggingId === emp.id ? ' dragging' : ''}`}
+                  draggable={true}
+                  onDragStart={e => handleDragStart(e, emp)}
+                  onDragEnd={handleDragEnd}
+                  id={`drag-emp-${emp.id}`}
+                >
+                  <div className="planner-emp-icon" style={{ background: AVATAR_COLORS[empleadosDisponibles.indexOf(emp) % AVATAR_COLORS.length] }}>
+                    <User size={15} />
+                  </div>
+                  <div className="planner-emp-info">
+                    <div className="planner-emp-name">{emp.name}</div>
+                    <div className="planner-emp-role">{emp.role}</div>
+                  </div>
+                  <GripVertical size={14} className="planner-emp-grip" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Weekly Calendar Grid */}
+          <div className="planner-week-grid">
+            {DAYS.map(({ key, label }) => (
+              <div
+                key={key}
+                className={`planner-day-col${dragOverDay === key ? ' drag-over' : ''}`}
+                onDragOver={e => handleDragOver(e, key)}
+                onDragLeave={e => handleDragLeave(e, key)}
+                onDrop={e => handleDrop(e, key)}
+                id={`day-col-${key}`}
+              >
+                <div className="planner-day-header">
+                  <div className="planner-day-name">{label}</div>
+                  <div className="planner-day-count">
+                    {horarioSemanal[key].length > 0
+                      ? `${horarioSemanal[key].length} asignado${horarioSemanal[key].length !== 1 ? 's' : ''}`
+                      : 'Sin asignar'}
+                  </div>
+                </div>
+                <div className="planner-day-body">
+                  {horarioSemanal[key].length === 0 ? (
+                    <div className="planner-day-empty">
+                      Suelta aquí
+                    </div>
+                  ) : (
+                    horarioSemanal[key].map(emp => (
+                      <div key={emp.id} className="planner-assigned-chip">
+                        <div className="planner-chip-avatar" style={{ background: AVATAR_COLORS[empleadosDisponibles.findIndex(e => e.id === emp.id) % AVATAR_COLORS.length] }}>
+                          {emp.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                        </div>
+                        <span className="planner-chip-name">{emp.name}</span>
+                        <button
+                          className="planner-chip-remove"
+                          onClick={() => handleRemoveFromDay(key, emp.id)}
+                          title="Quitar del día"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
