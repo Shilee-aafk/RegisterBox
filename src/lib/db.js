@@ -228,16 +228,15 @@ export const db = {
     async getAll() {
       const { data, error } = await supabase
         .from('horarios_empleados')
-        .select('*, empleados(id, name, role)')
-        .order('created_at');
+        .select('*');
       if (error) throw error;
       return data;
     },
-    async insert(empleado_id, dia_semana) {
+    async insert(empleado_id, dia_semana, hora_inicio, hora_fin) {
       const { data, error } = await supabase
         .from('horarios_empleados')
-        .insert([{ empleado_id, dia_semana }])
-        .select('*, empleados(id, name, role)')
+        .insert([{ empleado_id, dia_semana, hora_inicio, hora_fin }])
+        .select()
         .single();
       if (error) throw error;
       return data;

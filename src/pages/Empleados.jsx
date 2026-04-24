@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, GripVertical, Trash2, CalendarDays, Loader2 } from 'lucide-react';
+import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, Trash2, CalendarDays, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import './Empleados.css';
@@ -45,167 +45,200 @@ export default function Empleados() {
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // ====== Planificador Semanal (Drag & Drop) — Conectado a Supabase ======
+  // ====== Planificador por Horas — 3-Click Assignment ======
+  const HOURS = [
+    '07:00','08:00','09:00','10:00','11:00','12:00',
+    '13:00','14:00','15:00','16:00','17:00','18:00',
+    '19:00','20:00','21:00','22:00','23:00','00:00',
+  ];
+  const SLOT_H = 44;
+  const hIdx = (h) => HOURS.indexOf(h);
+
   const empleadosDisponibles = empleados.map(e => ({ id: e.id, name: e.name, role: e.role }));
 
-  const emptyWeek = () => ({ lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [] });
-  const [horarioSemanal, setHorarioSemanal] = useState(emptyWeek());
-  const [dragOverDay, setDragOverDay] = useState(null);
-  const [draggingId, setDraggingId] = useState(null);
+  const buildEmptyDays = () => {
+    const d = {};
+    DAYS.forEach(({ key }) => { d[key] = []; });
+    return d;
+  };
+
+  const [horarioSemanal, setHorarioSemanal] = useState(buildEmptyDays);
   const [loadingHorarios, setLoadingHorarios] = useState(true);
 
-  // Carga inicial: obtener horarios_empleados desde Supabase
+  // 3-click state machine
+  const [empSeleccionado, setEmpSeleccionado] = useState(null); // { id, name, role }
+  const [seleccionTurno, setSeleccionTurno] = useState(null);   // { day, startHour }
+
+  // --- Load from Supabase ---
   useEffect(() => {
-    if (!empleados.length) return; // Esperar a que carguen los empleados
-    async function fetchHorarios() {
+    if (!empleados.length) return;
+    (async () => {
       setLoadingHorarios(true);
       try {
-        const { data, error } = await supabase
-          .from('horarios_empleados')
-          .select('*');
+        const { data, error } = await supabase.from('horarios_empleados').select('*');
         if (error) throw error;
-
-        // Mapear la respuesta a la estructura { dia: [{ horarioId, id, name, role }, ...] }
-        const mapped = emptyWeek();
+        const mapped = buildEmptyDays();
         (data || []).forEach(row => {
-          if (!row.dia_semana || !mapped[row.dia_semana]) return;
+          const day = row.dia_semana;
+          if (!mapped[day]) return;
           const emp = empleados.find(e => e.id === row.empleado_id);
-          mapped[row.dia_semana].push({
+          mapped[day].push({
             horarioId: row.id,
             id: row.empleado_id,
-            name: emp?.name || `Empleado #${row.empleado_id}`,
+            name: emp?.name || `#${row.empleado_id}`,
             role: emp?.role || 'Personal',
+            hora_inicio: row.hora_inicio || '08:00',
+            hora_fin: row.hora_fin || row.hora_inicio || '08:00',
           });
         });
         setHorarioSemanal(mapped);
-      } catch (err) {
-        console.error('Error cargando horarios:', err.message);
-      }
+      } catch (err) { console.error('Error cargando horarios:', err.message); }
       setLoadingHorarios(false);
-    }
-    fetchHorarios();
+    })();
   }, [empleados]);
 
-  function handleDragStart(e, emp) {
-    e.dataTransfer.setData('application/json', JSON.stringify({ id: emp.id, name: emp.name, role: emp.role }));
-    e.dataTransfer.effectAllowed = 'copy';
-    setDraggingId(emp.id);
-  }
-
-  function handleDragEnd() {
-    setDraggingId(null);
-    setDragOverDay(null);
-  }
-
-  function handleDragOver(e, dayKey) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setDragOverDay(dayKey);
-  }
-
-  function handleDragLeave(e) {
-    // Only clear if we're actually leaving the day column
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      setDragOverDay(null);
+  // --- Click 1: Select employee ---
+  function handleSelectEmployee(emp) {
+    if (empSeleccionado?.id === emp.id) {
+      // Deselect
+      setEmpSeleccionado(null);
+      setSeleccionTurno(null);
+    } else {
+      setEmpSeleccionado(emp);
+      setSeleccionTurno(null); // reset any pending start
     }
   }
 
-  async function handleDrop(e, dayKey) {
-    e.preventDefault();
-    setDragOverDay(null);
-    setDraggingId(null);
-    let empData;
-    try {
-      empData = JSON.parse(e.dataTransfer.getData('application/json'));
-    } catch { return; /* bad drag data */ }
+  // --- Click 2 & 3: Grid clicks ---
+  async function handleGridClick(dayKey, hour) {
+    if (!empSeleccionado) return; // No employee selected
 
-    // Prevenir duplicados en el estado local
-    if (horarioSemanal[dayKey].some(emp => emp.id === empData.id)) return;
+    if (!seleccionTurno) {
+      // Click 2: set start hour
+      setSeleccionTurno({ day: dayKey, startHour: hour });
+      return;
+    }
+
+    // Click 3: must be same day and >= start
+    if (seleccionTurno.day !== dayKey) {
+      // Different day — reset start to this cell
+      setSeleccionTurno({ day: dayKey, startHour: hour });
+      return;
+    }
+
+    if (hIdx(hour) < hIdx(seleccionTurno.startHour)) {
+      // Clicked above start — reset start
+      setSeleccionTurno({ day: dayKey, startHour: hour });
+      return;
+    }
+
+    // Valid end hour — insert!
+    const hora_inicio = seleccionTurno.startHour;
+    const hora_fin = hour;
+    const emp = empSeleccionado;
+
+    // Clear selection state immediately
+    setSeleccionTurno(null);
 
     try {
-      // Insertar en Supabase
       const { data, error } = await supabase
         .from('horarios_empleados')
-        .insert([{ empleado_id: empData.id, dia_semana: dayKey }])
-        .select()
-        .single();
-
+        .insert([{ empleado_id: emp.id, dia_semana: dayKey, hora_inicio, hora_fin }])
+        .select().single();
       if (error) {
-        // UNIQUE constraint violation (23505) → el empleado ya está asignado a ese día
-        if (error.code === '23505') {
-          console.warn(`Empleado ${empData.name} ya asignado a ${dayKey}`);
-        } else {
-          console.error('Error al insertar horario:', error.code, error.message);
-        }
+        if (error.code === '23505') console.warn('Turno duplicado');
+        else console.error('Insert error:', error.code, error.message);
         return;
       }
-
-      // Actualizar estado local con los datos del drag + el UUID de Supabase
       setHorarioSemanal(prev => ({
         ...prev,
         [dayKey]: [...prev[dayKey], {
-          horarioId: data.id,
-          id: empData.id,
-          name: empData.name,
-          role: empData.role,
+          horarioId: data.id, id: emp.id, name: emp.name, role: emp.role,
+          hora_inicio, hora_fin,
         }],
       }));
-    } catch (err) {
-      console.error('Error inesperado en handleDrop:', err);
-    }
+    } catch (err) { console.error('Insert error:', err); }
   }
 
-  async function handleRemoveFromDay(dayKey, empId) {
-    // Encontrar el registro para obtener su horarioId (UUID)
-    const record = horarioSemanal[dayKey].find(emp => emp.id === empId);
-    if (!record) return;
+  function handleCancelSelection() {
+    setEmpSeleccionado(null);
+    setSeleccionTurno(null);
+  }
 
-    // Optimistic update: quitar del estado local inmediatamente
-    setHorarioSemanal(prev => ({
-      ...prev,
-      [dayKey]: prev[dayKey].filter(emp => emp.id !== empId),
-    }));
-
-    // Eliminar de Supabase
+  // --- Remove & Clear ---
+  async function handleRemoveShift(dayKey, horarioId) {
+    const backup = horarioSemanal[dayKey];
+    setHorarioSemanal(prev => ({ ...prev, [dayKey]: prev[dayKey].filter(s => s.horarioId !== horarioId) }));
     try {
-      const { error } = await supabase
-        .from('horarios_empleados')
-        .delete()
-        .eq('id', record.horarioId);
+      const { error } = await supabase.from('horarios_empleados').delete().eq('id', horarioId);
       if (error) {
-        console.error('Error al eliminar horario:', error.message);
-        // Rollback: volver a agregar al estado si falla
-        setHorarioSemanal(prev => ({
-          ...prev,
-          [dayKey]: [...prev[dayKey], record],
-        }));
+        console.error('Delete error:', error.message);
+        setHorarioSemanal(prev => ({ ...prev, [dayKey]: backup }));
       }
-    } catch (err) {
-      console.error('Error al eliminar horario:', err.message);
-    }
+    } catch (err) { console.error(err); }
   }
 
   async function handleClearPlanner() {
-    // Optimistic update
     const backup = { ...horarioSemanal };
-    setHorarioSemanal(emptyWeek());
-
+    setHorarioSemanal(buildEmptyDays());
     try {
-      const { error } = await supabase
-        .from('horarios_empleados')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-      if (error) {
-        console.error('Error al limpiar horarios:', error.message);
-        setHorarioSemanal(backup); // Rollback
+      const { error } = await supabase.from('horarios_empleados').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) { console.error(error.message); setHorarioSemanal(backup); }
+    } catch (err) { console.error(err); setHorarioSemanal(backup); }
+  }
+
+  // --- Layout: overlap collision (oldest → right 50%, newest → left 50%) ---
+  function layoutShifts(shifts) {
+    if (!shifts.length) return [];
+    const items = shifts.map(s => ({ ...s, _col: 0, _total: 1 }));
+
+    // For each shift, find all overlapping shifts
+    items.forEach((s, i) => {
+      const sStart = hIdx(s.hora_inicio), sEnd = hIdx(s.hora_fin);
+      const overlaps = items.filter((o, j) => {
+        if (j === i) return false;
+        const oStart = hIdx(o.hora_inicio), oEnd = hIdx(o.hora_fin);
+        return sStart <= oEnd && oStart <= sEnd; // ranges overlap
+      });
+
+      if (overlaps.length > 0) {
+        // Total columns = all overlapping + self
+        const group = [s, ...overlaps];
+        const totalCols = group.length;
+        // Sort group by array index (insertion order) — oldest first
+        const sorted = group.sort((a, b) => items.indexOf(a) - items.indexOf(b));
+        // Newest (last added) → col 0 (left), oldest → col 1+ (right)
+        sorted.forEach((g, idx) => {
+          // Reverse: newest = col 0, next-newest = col 1, etc
+          g._col = totalCols - 1 - idx;
+          g._total = totalCols;
+        });
       }
-    } catch (err) {
-      console.error('Error al limpiar horarios:', err.message);
-      setHorarioSemanal(backup);
-    }
+    });
+
+    return items;
   }
 
   const totalAsignaciones = Object.values(horarioSemanal).reduce((s, arr) => s + arr.length, 0);
+  const dayShiftCount = (k) => horarioSemanal[k].length;
+  const getEmpColor = (empId) => {
+    const i = empleadosDisponibles.findIndex(e => e.id === empId);
+    return AVATAR_COLORS[i >= 0 ? i % AVATAR_COLORS.length : 0];
+  };
+
+  // Gridline CSS class helper
+  const gridlineClass = (dayKey, hour) => {
+    const classes = ['planner-tl-gridline'];
+    if (empSeleccionado) classes.push('selectable');
+    if (seleccionTurno && seleccionTurno.day === dayKey) {
+      if (hour === seleccionTurno.startHour) classes.push('start-selected');
+      // Show range preview between start and hovered (we'll handle hover in-place)
+    }
+    return classes.join(' ');
+  };
+
+  // Current step number for the step bar
+  const currentStep = !empSeleccionado ? 0 : !seleccionTurno ? 1 : 2;
 
   const totalNomina = empleados.reduce((s, e) => s + e.salary, 0);
   const roles = [...new Set(empleados.map(e => e.role))].length;
@@ -418,115 +451,167 @@ export default function Empleados() {
         </div>
       </div>
 
-      {/* ====== Planificador Semanal ====== */}
+      {/* ====== Planificador Semanal — 3 Clicks ====== */}
       <div className="planner-section">
         <div className="planner-section-header">
           <div className="planner-section-title">
             <div className="planner-icon">
-              <CalendarDays size={18} />
+              <CalendarDays size={16} />
             </div>
             Planificador Semanal
             {totalAsignaciones > 0 && (
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>
-                — {totalAsignaciones} asignación{totalAsignaciones !== 1 ? 'es' : ''}
+                — {totalAsignaciones} turno{totalAsignaciones !== 1 ? 's' : ''}
               </span>
             )}
           </div>
           {totalAsignaciones > 0 && (
             <button className="planner-clear-btn" onClick={handleClearPlanner} id="btn-clear-planner">
-              <Trash2 size={13} /> Limpiar Todo
+              <Trash2 size={12} /> Limpiar Todo
             </button>
           )}
         </div>
 
+        {/* Step indicator */}
+        {currentStep > 0 && (
+          <div className="planner-step-bar">
+            <div className="step-num">{currentStep}</div>
+            {currentStep === 1 && (
+              <span>
+                <strong>{empSeleccionado.name}</strong> seleccionado — Haz click en la hora de <strong>inicio</strong>
+              </span>
+            )}
+            {currentStep === 2 && (
+              <span>
+                Inicio en <strong>{seleccionTurno.startHour}</strong> ({DAYS.find(d => d.key === seleccionTurno.day)?.label}) — Haz click en la hora de <strong>fin</strong>
+              </span>
+            )}
+            <button className="step-cancel" onClick={handleCancelSelection}>Cancelar</button>
+          </div>
+        )}
+
         <div className="planner-layout">
-          {/* Left: Draggable Employee List */}
+          {/* Left: Employee List */}
           <div className="planner-employees">
             <div className="planner-employees-header">
               <h3>Empleados</h3>
-              <p>Arrastra al calendario →</p>
+              <p>1. Selecciona un empleado</p>
             </div>
             <div className="planner-employees-list">
               {empleadosDisponibles.length === 0 ? (
-                <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
                   No hay empleados registrados.
                 </div>
               ) : empleadosDisponibles.map((emp, idx) => (
                 <div
                   key={emp.id}
-                  className={`planner-emp-card${draggingId === emp.id ? ' dragging' : ''}`}
-                  draggable={true}
-                  onDragStart={e => handleDragStart(e, emp)}
-                  onDragEnd={handleDragEnd}
-                  id={`drag-emp-${emp.id}`}
+                  className={`planner-emp-card${empSeleccionado?.id === emp.id ? ' selected' : ''}`}
+                  onClick={() => handleSelectEmployee(emp)}
+                  id={`select-emp-${emp.id}`}
                 >
                   <div className="planner-emp-icon" style={{ background: AVATAR_COLORS[idx % AVATAR_COLORS.length] }}>
-                    <User size={15} />
+                    <User size={13} />
                   </div>
                   <div className="planner-emp-info">
                     <div className="planner-emp-name">{emp.name}</div>
                     <div className="planner-emp-role">{emp.role}</div>
                   </div>
-                  <GripVertical size={14} className="planner-emp-grip" />
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Right: Weekly Calendar Grid */}
-          <div className="planner-week-grid">
-            {DAYS.map(({ key, label }) => (
-              <div
-                key={key}
-                className={`planner-day-col${dragOverDay === key ? ' drag-over' : ''}`}
-                onDragOver={e => handleDragOver(e, key)}
-                onDragLeave={e => handleDragLeave(e, key)}
-                onDrop={e => handleDrop(e, key)}
-                id={`day-col-${key}`}
-              >
-                <div className="planner-day-header">
-                  <div className="planner-day-name">{label}</div>
-                  <div className="planner-day-count">
-                    {horarioSemanal[key].length > 0
-                      ? `${horarioSemanal[key].length} asignado${horarioSemanal[key].length !== 1 ? 's' : ''}`
-                      : 'Sin asignar'}
-                  </div>
-                </div>
-                <div className="planner-day-body">
-                  {loadingHorarios ? (
-                    <div className="planner-day-empty" style={{ border: 'none' }}>
-                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                    </div>
-                  ) : horarioSemanal[key].length === 0 ? (
-                    <div className="planner-day-empty">
-                      Suelta aquí
-                    </div>
-                  ) : (
-                    horarioSemanal[key].map(emp => {
-                      const empIdx = empleadosDisponibles.findIndex(e => e.id === emp.id);
-                      return (
-                        <div key={emp.horarioId || emp.id} className="planner-assigned-chip">
-                          <div className="planner-chip-avatar" style={{ background: AVATAR_COLORS[empIdx >= 0 ? empIdx % AVATAR_COLORS.length : 0] }}>
-                            {emp.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
-                          </div>
-                          <span className="planner-chip-name">{emp.name}</span>
-                          <button
-                            className="planner-chip-remove"
-                            onClick={() => handleRemoveFromDay(key, emp.id)}
-                            title="Quitar del día"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+          {/* Right: Hourly Timeline */}
+          <div className="planner-timeline-wrapper">
+            {loadingHorarios ? (
+              <div className="planner-loading-overlay">
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                Cargando horarios...
               </div>
-            ))}
+            ) : (
+              <>
+                <div className="planner-tl-header">
+                  <div className="planner-tl-corner" />
+                  {DAYS.map(({ key, label }) => (
+                    <div key={key} className="planner-tl-day-header">
+                      <div className="planner-tl-day-label">{label.slice(0, 3)}</div>
+                      <div className="planner-tl-day-count">
+                        {dayShiftCount(key) > 0 ? `${dayShiftCount(key)} turno${dayShiftCount(key) !== 1 ? 's' : ''}` : '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="planner-tl-body">
+                  <div className="planner-tl-hours-col">
+                    {HOURS.map(h => (
+                      <div key={h} className="planner-tl-hour-label">{h}</div>
+                    ))}
+                  </div>
+
+                  {DAYS.map(({ key }) => (
+                    <div key={key} className="planner-tl-day-col">
+                      {HOURS.map(h => (
+                        <div
+                          key={h}
+                          className={gridlineClass(key, h)}
+                          onClick={() => handleGridClick(key, h)}
+                        />
+                      ))}
+
+                      {seleccionTurno?.day === key && (
+                        <div className="planner-preview-block" style={{
+                          top: hIdx(seleccionTurno.startHour) * SLOT_H,
+                          height: SLOT_H - 2,
+                          background: empSeleccionado ? `${getEmpColor(empSeleccionado.id)}18` : 'rgba(31,145,145,.1)',
+                          borderColor: empSeleccionado ? getEmpColor(empSeleccionado.id) : 'var(--accent-blue)',
+                        }}>
+                          <span>{seleccionTurno.startHour} — ?</span>
+                        </div>
+                      )}
+
+                      {layoutShifts(horarioSemanal[key]).map(shift => {
+                        const spanH = hIdx(shift.hora_fin) - hIdx(shift.hora_inicio) + 1;
+                        const color = getEmpColor(shift.id);
+                        return (
+                          <div
+                            key={shift.horarioId}
+                            className="planner-shift-block"
+                            style={{
+                              top: hIdx(shift.hora_inicio) * SLOT_H + 1,
+                              height: spanH * SLOT_H - 2,
+                              left: `calc(${(shift._col * 100) / shift._total}% + 1px)`,
+                              width: `calc(${100 / shift._total}% - 2px)`,
+                              background: `${color}14`,
+                              borderLeftColor: color,
+                            }}
+                          >
+                            <div className="shift-header">
+                              <div className="shift-avatar" style={{ background: color }}>
+                                {shift.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                              </div>
+                              <span className="shift-name">{shift.name}</span>
+                            </div>
+                            {spanH > 1 && (
+                              <span className="shift-time">{shift.hora_inicio} — {shift.hora_fin}</span>
+                            )}
+                            <button className="shift-remove" onClick={() => handleRemoveShift(key, shift.horarioId)} title="Quitar">
+                              <X size={10} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
+
+
+
 
       {/* Modal */}
       {showModal && (
