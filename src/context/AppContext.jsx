@@ -18,8 +18,9 @@ export function AppProvider({ children }) {
   const [transacciones, setTransacciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState('connecting'); // 'connecting' | 'connected' | 'error'
   const [error, setError] = useState(null);
-  
+
   /* ---- Auth State ---- */
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -39,16 +40,12 @@ export function AppProvider({ children }) {
       payments: { efectivo: true, tarjeta: true, transferencia: true },
       security: { dosFactores: false, cierreSesion: true },
     };
-    
     const saved = localStorage.getItem('gestorpro-config');
     const finalConfig = saved ? JSON.parse(saved) : defaults;
-    
-    // Safety check: ensure all sections exist
     if (!finalConfig.appearance) finalConfig.appearance = defaults.appearance;
     if (!finalConfig.biz) finalConfig.biz = defaults.biz;
     if (!finalConfig.notifs) finalConfig.notifs = defaults.notifs;
     if (!finalConfig.regional) finalConfig.regional = defaults.regional;
-    
     return finalConfig;
   });
 
@@ -73,7 +70,6 @@ export function AppProvider({ children }) {
       html.classList.remove('no-anim');
     }
 
-    /* Inyección dinámica del tema */
     const themes = {
       teal: { base: '#0d9488', hover: '#0f766e', light: '#ccfbf1', dark: '#115e59', text: '#d1d5db', textActive: '#ffffff' },
       crema: { base: '#ce9c6b', hover: '#bd8b5a', light: '#fefae0', dark: '#a6723e', text: '#4b5563', textActive: '#111827' },
@@ -84,20 +80,15 @@ export function AppProvider({ children }) {
       avena: { base: '#e2c792', hover: '#d1b57e', light: '#fdf6e3', dark: '#a08b5e', text: '#4b5563', textActive: '#111827' }
     };
     const t = themes[config.appearance.temaColor] || themes.teal;
-    
     html.style.setProperty('--accent-blue', t.base);
     html.style.setProperty('--bg-sidebar', t.base);
     html.style.setProperty('--bg-card-dark', t.dark);
     html.style.setProperty('--bg-hover', t.hover);
-    html.style.setProperty('--primary-color', t.base); // Para los nuevos logos HD
-    
-    // Contraste dinámico de los textos del sidebar
+    html.style.setProperty('--primary-color', t.base);
     html.style.setProperty('--text-sidebar', t.text);
     html.style.setProperty('--text-sidebar-active', t.textActive);
-    
-    // Y para los íconos svg del sidebar que heredan color
     if (t.base === '#e2c792' || t.base === '#dca498' || t.base === '#ce9c6b') {
-      html.style.setProperty('--border-dark', 'rgba(0,0,0,0.1)'); 
+      html.style.setProperty('--border-dark', 'rgba(0,0,0,0.1)');
     } else {
       html.style.setProperty('--border-dark', 'rgba(255,255,255,0.15)');
     }
@@ -129,28 +120,68 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  /* ---- Realtime subscriptions usando payload directo ---- */
   useEffect(() => {
     fetchAll();
 
-    // Realtime subscriptions
     const channel = supabase
-      .channel('gestorpro-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'productos' }, () => {
-        db.productos.getAll().then(d => setProductos(d || []));
+      .channel('gestorpro-realtime-v2')
+      // ---- PRODUCTOS ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'productos' }, ({ new: row }) => {
+        setProductos(prev => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
-        db.clientes.getAll().then(d => setClientes(d || []));
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'productos' }, ({ new: row }) => {
+        setProductos(prev => prev.map(p => p.id === row.id ? row : p));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'empleados' }, () => {
-        db.empleados.getAll().then(d => setEmpleados(d || []));
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'productos' }, ({ old: row }) => {
+        setProductos(prev => prev.filter(p => p.id !== row.id));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'citas' }, () => {
-        db.citas.getAll().then(d => setCitas(d || []));
+      // ---- CLIENTES ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clientes' }, ({ new: row }) => {
+        setClientes(prev => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transacciones' }, () => {
-        db.transacciones.getAll().then(d => setTransacciones(d || []));
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes' }, ({ new: row }) => {
+        setClientes(prev => prev.map(c => c.id === row.id ? row : c));
       })
-      .subscribe();
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'clientes' }, ({ old: row }) => {
+        setClientes(prev => prev.filter(c => c.id !== row.id));
+      })
+      // ---- EMPLEADOS ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'empleados' }, ({ new: row }) => {
+        setEmpleados(prev => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'empleados' }, ({ new: row }) => {
+        setEmpleados(prev => prev.map(e => e.id === row.id ? row : e));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'empleados' }, ({ old: row }) => {
+        setEmpleados(prev => prev.filter(e => e.id !== row.id));
+      })
+      // ---- CITAS ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'citas' }, ({ new: row }) => {
+        setCitas(prev => [...prev, row].sort((a, b) => a.date > b.date ? 1 : -1));
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'citas' }, ({ new: row }) => {
+        setCitas(prev => prev.map(c => c.id === row.id ? row : c));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'citas' }, ({ old: row }) => {
+        setCitas(prev => prev.filter(c => c.id !== row.id));
+      })
+      // ---- TRANSACCIONES ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transacciones' }, ({ new: row }) => {
+        setTransacciones(prev => [row, ...prev]);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'transacciones' }, ({ old: row }) => {
+        setTransacciones(prev => prev.filter(t => t.id !== row.id));
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setRealtimeStatus('error');
+        } else {
+          setRealtimeStatus('connecting');
+        }
+      });
 
     return () => supabase.removeChannel(channel);
   }, [fetchAll]);
@@ -159,18 +190,18 @@ export function AppProvider({ children }) {
      PRODUCTOS CRUD
   ============================ */
   async function addProducto(data) {
+    // Realtime INSERT event actualizará el estado automáticamente
     const r = await db.productos.insert(data);
-    setProductos(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateProducto(id, data) {
+    // Realtime UPDATE event actualizará el estado automáticamente
     const r = await db.productos.update(id, data);
-    setProductos(prev => prev.map(p => p.id === id ? r : p));
     return r;
   }
   async function deleteProducto(id) {
+    // Realtime DELETE event actualizará el estado automáticamente
     await db.productos.delete(id);
-    setProductos(prev => prev.filter(p => p.id !== id));
   }
 
   /* ============================
@@ -178,17 +209,14 @@ export function AppProvider({ children }) {
   ============================ */
   async function addCliente(data) {
     const r = await db.clientes.insert(data);
-    setClientes(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateCliente(id, data) {
     const r = await db.clientes.update(id, data);
-    setClientes(prev => prev.map(c => c.id === id ? r : c));
     return r;
   }
   async function deleteCliente(id) {
     await db.clientes.delete(id);
-    setClientes(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
@@ -196,17 +224,14 @@ export function AppProvider({ children }) {
   ============================ */
   async function addEmpleado(data) {
     const r = await db.empleados.insert(data);
-    setEmpleados(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateEmpleado(id, data) {
     const r = await db.empleados.update(id, data);
-    setEmpleados(prev => prev.map(e => e.id === id ? r : e));
     return r;
   }
   async function toggleEmpleadoActive(id, active) {
-    const r = await db.empleados.toggleActive(id, active);
-    setEmpleados(prev => prev.map(e => e.id === id ? r : e));
+    await db.empleados.toggleActive(id, active);
   }
 
   /* ============================
@@ -214,17 +239,14 @@ export function AppProvider({ children }) {
   ============================ */
   async function addCita(data) {
     const r = await db.citas.insert(data);
-    setCitas(prev => [...prev, r].sort((a, b) => a.date > b.date ? 1 : -1));
     return r;
   }
   async function updateCita(id, data) {
     const r = await db.citas.update(id, data);
-    setCitas(prev => prev.map(c => c.id === id ? r : c));
     return r;
   }
   async function deleteCita(id) {
     await db.citas.delete(id);
-    setCitas(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
@@ -232,64 +254,44 @@ export function AppProvider({ children }) {
   ============================ */
   async function addTransaccion(data) {
     const r = await db.transacciones.insert(data);
-    setTransacciones(prev => [r, ...prev]);
+    // Realtime INSERT lo propagará al estado
     return r;
   }
   async function deleteTransaccion(id) {
     await db.transacciones.delete(id);
-    setTransacciones(prev => prev.filter(t => t.id !== id));
+    // Realtime DELETE lo propagará al estado
   }
 
   /* ============================
      POS: process sale
-     - Creates ingreso transaction
-     - Decrements stock for each product
-     - Adds purchase to client
+     Solo escribe en la DB. Realtime propaga los cambios
+     a TODOS los clientes abiertos automáticamente.
   ============================ */
   async function processSale({ cart, total, payMethod, clientId, clientName }) {
-    // 1. Create transaction
     const desc = clientName
       ? `Venta - ${clientName}`
       : 'Venta - Cliente General';
 
-    await addTransaccion({
+    // 1. Crear transacción (Realtime la propagará a todos)
+    await db.transacciones.insert({
       description: desc,
       category: 'Ventas',
       amount: total,
       type: 'ingreso',
     });
 
-    // 2. Decrement stock for each producto item
+    // 2. Decrementar stock (Realtime propagará cada UPDATE)
     for (const item of cart) {
       if (item.category !== 'Servicios' && item.stock < 999) {
         await db.productos.update(item.id, {
           stock: Math.max(0, item.stock - item.qty),
         });
-        setProductos(prev =>
-          prev.map(p =>
-            p.id === item.id
-              ? { ...p, stock: Math.max(0, p.stock - item.qty) }
-              : p
-          )
-        );
       }
     }
 
-    // 3. Update client purchase stats if a real client was selected
+    // 3. Actualizar cliente (Realtime propagará el UPDATE)
     if (clientId) {
       await db.clientes.addCompra(clientId, total);
-      setClientes(prev =>
-        prev.map(c =>
-          c.id === clientId
-            ? {
-                ...c,
-                total_compras: (c.total_compras || 0) + total,
-                num_compras: (c.num_compras || 0) + 1,
-                puntos: (c.puntos || 0) + Math.floor(total / 1000),
-              }
-            : c
-        )
-      );
     }
   }
 
@@ -353,7 +355,6 @@ export function AppProvider({ children }) {
   const formatCurrency = useCallback((amount) => {
     const m = config?.regional?.moneda || 'CLP';
     const num = Number(amount) || 0;
-    
     switch (m) {
       case 'USD': return 'US$ ' + num.toLocaleString('en-US');
       case 'EUR': return '€ ' + num.toLocaleString('es-ES');
@@ -373,7 +374,7 @@ export function AppProvider({ children }) {
   const value = {
     /* State */
     productos, clientes, empleados, citas, transacciones,
-    loading, connected, error, config, currentUser,
+    loading, connected, realtimeStatus, error, config, currentUser,
     /* Computed */
     ventasHoy, transaccionesHoy, citasHoy, stockAlerts, formatCurrency,
     /* Config */

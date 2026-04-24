@@ -25,7 +25,7 @@ export default function Topbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
     const title = PAGE_NAMES[pathname] || 'GestorPro';
-  const { stockAlerts, citasHoy, config, updateConfig, currentUser, processLogout } = useApp();
+  const { stockAlerts, citasHoy, config, updateConfig, currentUser, processLogout, realtimeStatus } = useApp();
 
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -149,6 +149,28 @@ export default function Topbar() {
       </div>
 
       <div className="topbar-actions">
+        {/* Indicador de sincronización en tiempo real */}
+        <div
+          title={realtimeStatus === 'connected' ? 'Sincronización en tiempo real activa' : realtimeStatus === 'connecting' ? 'Conectando...' : 'Error de conexión — los cambios pueden no verse en tiempo real'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '4px 10px', borderRadius: 99,
+            fontSize: 11, fontWeight: 600,
+            background: realtimeStatus === 'connected' ? 'rgba(16,185,129,0.12)' : realtimeStatus === 'connecting' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+            color: realtimeStatus === 'connected' ? '#10b981' : realtimeStatus === 'connecting' ? '#f59e0b' : '#ef4444',
+            border: `1px solid ${realtimeStatus === 'connected' ? 'rgba(16,185,129,0.3)' : realtimeStatus === 'connecting' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            cursor: 'default', userSelect: 'none',
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: realtimeStatus === 'connected' ? '#10b981' : realtimeStatus === 'connecting' ? '#f59e0b' : '#ef4444',
+            animation: realtimeStatus === 'connecting' ? 'pulse 1.5s infinite' : realtimeStatus === 'connected' ? 'none' : 'none',
+            display: 'inline-block',
+            boxShadow: realtimeStatus === 'connected' ? '0 0 0 3px rgba(16,185,129,0.2)' : 'none',
+          }} />
+          {realtimeStatus === 'connected' ? 'En vivo' : realtimeStatus === 'connecting' ? 'Conectando' : 'Desconectado'}
+        </div>
         <button
           className="topbar-icon-btn"
           title="Tema"
