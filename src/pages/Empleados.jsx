@@ -96,8 +96,9 @@ export default function Empleados() {
   // --- Load from Supabase ---
   useEffect(() => {
     if (!empleados.length) return;
-    (async () => {
-      setLoadingHorarios(true);
+
+    const fetchHorarios = async (showLoading = true) => {
+      if (showLoading) setLoadingHorarios(true);
       try {
         const { data, error } = await supabase.from('horarios_empleados').select('*');
         if (error) throw error;
@@ -117,8 +118,21 @@ export default function Empleados() {
         });
         setHorarioSemanal(mapped);
       } catch (err) { console.error('Error cargando horarios:', err.message); }
-      setLoadingHorarios(false);
-    })();
+      if (showLoading) setLoadingHorarios(false);
+    };
+
+    fetchHorarios();
+
+    const channel = supabase
+      .channel('horarios-empleados-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'horarios_empleados' }, () => {
+        fetchHorarios(false);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [empleados]);
 
   // --- Click 1: Select employee ---
