@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, Trash2, CalendarDays, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
@@ -66,8 +66,32 @@ export default function Empleados() {
   const [loadingHorarios, setLoadingHorarios] = useState(true);
 
   // 3-click state machine
-  const [empSeleccionado, setEmpSeleccionado] = useState(null); // { id, name, role }
-  const [seleccionTurno, setSeleccionTurno] = useState(null);   // { day, startHour }
+  const [empSeleccionado, setEmpSeleccionado] = useState(null);
+  const [seleccionTurno, setSeleccionTurno] = useState(null);
+
+  // Hover & Tooltip
+  const [hoveredEmpleadoId, setHoveredEmpleadoId] = useState(null);
+  const [tooltip, setTooltip] = useState(null); // { name, role, hora_inicio, hora_fin, x, y }
+  const tooltipTimer = useRef(null);
+
+  function handleShiftMouseEnter(e, shift) {
+    clearTimeout(tooltipTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    tooltipTimer.current = setTimeout(() => {
+      setTooltip({
+        name: shift.name, role: shift.role,
+        hora_inicio: shift.hora_inicio, hora_fin: shift.hora_fin,
+        x: rect.left + rect.width / 2, y: rect.top - 4,
+      });
+    }, 2000);
+  }
+  function handleShiftMouseLeave() {
+    clearTimeout(tooltipTimer.current);
+    setTooltip(null);
+  }
+
+  // Track which day column is hovered (for per-day invisibility)
+  const [hoveredDay, setHoveredDay] = useState(null);
 
   // --- Load from Supabase ---
   useEffect(() => {
@@ -140,6 +164,7 @@ export default function Empleados() {
     // Clear selection state immediately
     setSeleccionTurno(null);
     setEmpSeleccionado(null);
+    setHoveredDay(null);
 
     try {
       const { data, error } = await supabase
@@ -164,6 +189,7 @@ export default function Empleados() {
   function handleCancelSelection() {
     setEmpSeleccionado(null);
     setSeleccionTurno(null);
+    setHoveredDay(null);
   }
 
   // --- Remove & Clear ---
@@ -506,8 +532,10 @@ export default function Empleados() {
               ) : empleadosDisponibles.map((emp, idx) => (
                 <div
                   key={emp.id}
-                  className={`planner-emp-card${empSeleccionado?.id === emp.id ? ' selected' : ''}`}
+                  className={`planner-emp-card${empSeleccionado?.id === emp.id ? ' selected' : ''}${hoveredEmpleadoId && hoveredEmpleadoId !== emp.id ? ' dimmed' : ''}${hoveredEmpleadoId === emp.id ? ' highlighted' : ''}`}
                   onClick={() => handleSelectEmployee(emp)}
+                  onMouseEnter={() => setHoveredEmpleadoId(emp.id)}
+                  onMouseLeave={() => setHoveredEmpleadoId(null)}
                   id={`select-emp-${emp.id}`}
                 >
                   <div className="planner-emp-icon" style={{ background: AVATAR_COLORS[idx % AVATAR_COLORS.length] }}>
@@ -551,7 +579,12 @@ export default function Empleados() {
                   </div>
 
                   {DAYS.map(({ key }) => (
-                    <div key={key} className={`planner-tl-day-col${empSeleccionado ? ' assigning' : ''}`}>
+                    <div
+                      key={key}
+                      className={`planner-tl-day-col${empSeleccionado && hoveredDay === key ? ' assigning' : ''}`}
+                      onMouseEnter={() => empSeleccionado && setHoveredDay(key)}
+                      onMouseLeave={() => setHoveredDay(null)}
+                    >
                       {HOURS.map(h => (
                         <div
                           key={h}
@@ -577,15 +610,17 @@ export default function Empleados() {
                         return (
                           <div
                             key={shift.horarioId}
-                            className="planner-shift-block"
+                            className={`planner-shift-block${hoveredEmpleadoId === shift.id ? ' highlight' : ''}${hoveredEmpleadoId && hoveredEmpleadoId !== shift.id ? ' dim' : ''}`}
                             style={{
                               top: hIdx(shift.hora_inicio) * SLOT_H + 1,
                               height: spanH * SLOT_H - 2,
                               left: `calc(${(shift._col * 100) / shift._total}% + 1px)`,
                               width: `calc(${100 / shift._total}% - 2px)`,
-                              background: `${color}14`,
+                              background: hoveredEmpleadoId === shift.id ? `${color}30` : `${color}14`,
                               borderLeftColor: color,
                             }}
+                            onMouseEnter={(e) => { setHoveredEmpleadoId(shift.id); handleShiftMouseEnter(e, shift); }}
+                            onMouseLeave={() => { setHoveredEmpleadoId(null); handleShiftMouseLeave(); }}
                           >
                             <div className="shift-header">
                               <div className="shift-avatar" style={{ background: color }}>
@@ -613,6 +648,24 @@ export default function Empleados() {
 
 
 
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div className="shift-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+          <div className="shift-tooltip-row">
+            <User size={12} />
+            <strong>{tooltip.name}</strong>
+          </div>
+          <div className="shift-tooltip-row">
+            <Shield size={12} />
+            <RoleBadge role={tooltip.role} />
+          </div>
+          <div className="shift-tooltip-row">
+            <Calendar size={12} />
+            <span>{tooltip.hora_inicio} — {tooltip.hora_fin}</span>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && (
