@@ -88,6 +88,15 @@ BEGIN
 END;
 $$;
 
+-- 6. Tabla de Horarios de Empleados (Planificador Semanal)
+CREATE TABLE public.horarios_empleados (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    empleado_id BIGINT NOT NULL REFERENCES public.empleados(id) ON DELETE CASCADE,
+    dia_semana TEXT NOT NULL CHECK (dia_semana IN ('lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (empleado_id, dia_semana)
+);
+
 -- =====================================
 -- DATOS DE DEMOSTRACIÓN (Opcional)
 -- =====================================
@@ -97,3 +106,4 @@ $$;
 -- ('Shampoo Kerastase', 'Productos', 'Unidad', 25000, 15000, 10, 5, '123456789'),
 -- ('Corte de Cabello', 'Servicios', 'Servicio', 15000, 0, 0, 0, null),
 -- ('Esmalte de Uñas', 'Productos', 'Unidad', 5000, 3000, 4, 10, '987654321');
+

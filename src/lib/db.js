@@ -222,4 +222,39 @@ export const db = {
       if (error) throw error;
     },
   },
+
+  /* ==================== HORARIOS EMPLEADOS ==================== */
+  horarios: {
+    async getAll() {
+      const { data, error } = await supabase
+        .from('horarios_empleados')
+        .select('*, empleados(id, name, role)')
+        .order('created_at');
+      if (error) throw error;
+      return data;
+    },
+    async insert(empleado_id, dia_semana) {
+      const { data, error } = await supabase
+        .from('horarios_empleados')
+        .insert([{ empleado_id, dia_semana }])
+        .select('*, empleados(id, name, role)')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    async delete(id) {
+      const { error } = await supabase
+        .from('horarios_empleados')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    async deleteAll() {
+      const { error } = await supabase
+        .from('horarios_empleados')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+    },
+  },
 };

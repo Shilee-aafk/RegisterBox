@@ -2,7 +2,11 @@
    Planificador Semanal — Drag & Drop Shift Planner
    ========================================================= */
 
-/* ---------- Section wrapper ---------- */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .planner-section {
   margin-top: 24px;
 }

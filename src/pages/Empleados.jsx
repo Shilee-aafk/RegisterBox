@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, GripVertical, Trash2, CalendarDays } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, GripVertical, Trash2, CalendarDays, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../lib/supabase';
 import './Empleados.css';
 
 
@@ -44,21 +45,46 @@ export default function Empleados() {
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // ====== Planificador Semanal (Drag & Drop) ======
-  const empleadosDisponibles = [
-    { id: 'emp-1', name: 'Juan Pérez', role: 'Cajero' },
-    { id: 'emp-2', name: 'María López', role: 'Personal' },
-    { id: 'emp-3', name: 'Pedro García', role: 'Gerente' },
-    { id: 'emp-4', name: 'Ana Martínez', role: 'Administrador' },
-    { id: 'emp-5', name: 'Carlos Rodríguez', role: 'Cajero' },
-    { id: 'emp-6', name: 'Laura Sánchez', role: 'Personal' },
-  ];
+  // ====== Planificador Semanal (Drag & Drop) — Conectado a Supabase ======
+  const empleadosDisponibles = empleados.map(e => ({ id: e.id, name: e.name, role: e.role }));
 
-  const [horarioSemanal, setHorarioSemanal] = useState({
-    lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [],
-  });
+  const emptyWeek = () => ({ lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [] });
+  const [horarioSemanal, setHorarioSemanal] = useState(emptyWeek());
   const [dragOverDay, setDragOverDay] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [loadingHorarios, setLoadingHorarios] = useState(true);
+
+  // Carga inicial: obtener horarios_empleados desde Supabase
+  useEffect(() => {
+    if (!empleados.length) return; // Esperar a que carguen los empleados
+    async function fetchHorarios() {
+      setLoadingHorarios(true);
+      try {
+        const { data, error } = await supabase
+          .from('horarios_empleados')
+          .select('*');
+        if (error) throw error;
+
+        // Mapear la respuesta a la estructura { dia: [{ horarioId, id, name, role }, ...] }
+        const mapped = emptyWeek();
+        (data || []).forEach(row => {
+          if (!row.dia_semana || !mapped[row.dia_semana]) return;
+          const emp = empleados.find(e => e.id === row.empleado_id);
+          mapped[row.dia_semana].push({
+            horarioId: row.id,
+            id: row.empleado_id,
+            name: emp?.name || `Empleado #${row.empleado_id}`,
+            role: emp?.role || 'Personal',
+          });
+        });
+        setHorarioSemanal(mapped);
+      } catch (err) {
+        console.error('Error cargando horarios:', err.message);
+      }
+      setLoadingHorarios(false);
+    }
+    fetchHorarios();
+  }, [empleados]);
 
   function handleDragStart(e, emp) {
     e.dataTransfer.setData('application/json', JSON.stringify({ id: emp.id, name: emp.name, role: emp.role }));
@@ -77,36 +103,106 @@ export default function Empleados() {
     setDragOverDay(dayKey);
   }
 
-  function handleDragLeave(e, dayKey) {
+  function handleDragLeave(e) {
     // Only clear if we're actually leaving the day column
     if (!e.currentTarget.contains(e.relatedTarget)) {
       setDragOverDay(null);
     }
   }
 
-  function handleDrop(e, dayKey) {
+  async function handleDrop(e, dayKey) {
     e.preventDefault();
     setDragOverDay(null);
     setDraggingId(null);
+    let empData;
     try {
-      const empData = JSON.parse(e.dataTransfer.getData('application/json'));
-      setHorarioSemanal(prev => {
-        // Prevent duplicates in the same day
-        if (prev[dayKey].some(emp => emp.id === empData.id)) return prev;
-        return { ...prev, [dayKey]: [...prev[dayKey], empData] };
-      });
-    } catch { /* ignore bad data */ }
+      empData = JSON.parse(e.dataTransfer.getData('application/json'));
+    } catch { return; /* bad drag data */ }
+
+    // Prevenir duplicados en el estado local
+    if (horarioSemanal[dayKey].some(emp => emp.id === empData.id)) return;
+
+    try {
+      // Insertar en Supabase
+      const { data, error } = await supabase
+        .from('horarios_empleados')
+        .insert([{ empleado_id: empData.id, dia_semana: dayKey }])
+        .select()
+        .single();
+
+      if (error) {
+        // UNIQUE constraint violation (23505) → el empleado ya está asignado a ese día
+        if (error.code === '23505') {
+          console.warn(`Empleado ${empData.name} ya asignado a ${dayKey}`);
+        } else {
+          console.error('Error al insertar horario:', error.code, error.message);
+        }
+        return;
+      }
+
+      // Actualizar estado local con los datos del drag + el UUID de Supabase
+      setHorarioSemanal(prev => ({
+        ...prev,
+        [dayKey]: [...prev[dayKey], {
+          horarioId: data.id,
+          id: empData.id,
+          name: empData.name,
+          role: empData.role,
+        }],
+      }));
+    } catch (err) {
+      console.error('Error inesperado en handleDrop:', err);
+    }
   }
 
-  function handleRemoveFromDay(dayKey, empId) {
+  async function handleRemoveFromDay(dayKey, empId) {
+    // Encontrar el registro para obtener su horarioId (UUID)
+    const record = horarioSemanal[dayKey].find(emp => emp.id === empId);
+    if (!record) return;
+
+    // Optimistic update: quitar del estado local inmediatamente
     setHorarioSemanal(prev => ({
       ...prev,
       [dayKey]: prev[dayKey].filter(emp => emp.id !== empId),
     }));
+
+    // Eliminar de Supabase
+    try {
+      const { error } = await supabase
+        .from('horarios_empleados')
+        .delete()
+        .eq('id', record.horarioId);
+      if (error) {
+        console.error('Error al eliminar horario:', error.message);
+        // Rollback: volver a agregar al estado si falla
+        setHorarioSemanal(prev => ({
+          ...prev,
+          [dayKey]: [...prev[dayKey], record],
+        }));
+      }
+    } catch (err) {
+      console.error('Error al eliminar horario:', err.message);
+    }
   }
 
-  function handleClearPlanner() {
-    setHorarioSemanal({ lun: [], mar: [], mie: [], jue: [], vie: [], sab: [], dom: [] });
+  async function handleClearPlanner() {
+    // Optimistic update
+    const backup = { ...horarioSemanal };
+    setHorarioSemanal(emptyWeek());
+
+    try {
+      const { error } = await supabase
+        .from('horarios_empleados')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) {
+        console.error('Error al limpiar horarios:', error.message);
+        setHorarioSemanal(backup); // Rollback
+      }
+    } catch (err) {
+      console.error('Error al limpiar horarios:', err.message);
+      setHorarioSemanal(backup);
+    }
   }
 
   const totalAsignaciones = Object.values(horarioSemanal).reduce((s, arr) => s + arr.length, 0);
@@ -351,7 +447,11 @@ export default function Empleados() {
               <p>Arrastra al calendario →</p>
             </div>
             <div className="planner-employees-list">
-              {empleadosDisponibles.map(emp => (
+              {empleadosDisponibles.length === 0 ? (
+                <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                  No hay empleados registrados.
+                </div>
+              ) : empleadosDisponibles.map((emp, idx) => (
                 <div
                   key={emp.id}
                   className={`planner-emp-card${draggingId === emp.id ? ' dragging' : ''}`}
@@ -360,7 +460,7 @@ export default function Empleados() {
                   onDragEnd={handleDragEnd}
                   id={`drag-emp-${emp.id}`}
                 >
-                  <div className="planner-emp-icon" style={{ background: AVATAR_COLORS[empleadosDisponibles.indexOf(emp) % AVATAR_COLORS.length] }}>
+                  <div className="planner-emp-icon" style={{ background: AVATAR_COLORS[idx % AVATAR_COLORS.length] }}>
                     <User size={15} />
                   </div>
                   <div className="planner-emp-info">
@@ -393,26 +493,33 @@ export default function Empleados() {
                   </div>
                 </div>
                 <div className="planner-day-body">
-                  {horarioSemanal[key].length === 0 ? (
+                  {loadingHorarios ? (
+                    <div className="planner-day-empty" style={{ border: 'none' }}>
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    </div>
+                  ) : horarioSemanal[key].length === 0 ? (
                     <div className="planner-day-empty">
                       Suelta aquí
                     </div>
                   ) : (
-                    horarioSemanal[key].map(emp => (
-                      <div key={emp.id} className="planner-assigned-chip">
-                        <div className="planner-chip-avatar" style={{ background: AVATAR_COLORS[empleadosDisponibles.findIndex(e => e.id === emp.id) % AVATAR_COLORS.length] }}>
-                          {emp.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                    horarioSemanal[key].map(emp => {
+                      const empIdx = empleadosDisponibles.findIndex(e => e.id === emp.id);
+                      return (
+                        <div key={emp.horarioId || emp.id} className="planner-assigned-chip">
+                          <div className="planner-chip-avatar" style={{ background: AVATAR_COLORS[empIdx >= 0 ? empIdx % AVATAR_COLORS.length : 0] }}>
+                            {emp.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                          </div>
+                          <span className="planner-chip-name">{emp.name}</span>
+                          <button
+                            className="planner-chip-remove"
+                            onClick={() => handleRemoveFromDay(key, emp.id)}
+                            title="Quitar del día"
+                          >
+                            <X size={12} />
+                          </button>
                         </div>
-                        <span className="planner-chip-name">{emp.name}</span>
-                        <button
-                          className="planner-chip-remove"
-                          onClick={() => handleRemoveFromDay(key, emp.id)}
-                          title="Quitar del día"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
