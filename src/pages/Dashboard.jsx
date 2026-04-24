@@ -2,6 +2,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import { useState, useMemo } from 'react';
 import {
   DollarSign, Target, Users, Calendar,
   TrendingUp, Zap, Package, TriangleAlert
@@ -27,30 +28,43 @@ function StatCard({ label, value, changeLabel, change, icon: Icon, iconBg, iconC
   );
 }
 
-const TooltipArea = ({ active, payload, label }) => {
+
+
+function TooltipArea({ active, payload, label, fmt }) {
   if (active && payload?.length) return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
       <strong>{label}</strong>
-      {payload.map(p => <div key={p.name} style={{ color: p.color, marginTop: 2 }}>{p.name}: {fmt(p.value)}</div>)}
+      {payload.map(p => <div key={p.name} style={{ color: p.color, marginTop: 2 }}>{p.name}: {fmt(p.value || 0)}</div>)}
     </div>
   );
   return null;
-};
+}
 
 export default function Dashboard() {
   const { ventasHoy, transaccionesHoy, clientes, citasHoy, stockAlerts, transacciones, loading, formatCurrency: fmt } = useApp();
 
-  // Last 5 income transactions as "recent sales"
-  const recentSales = transacciones
-    .filter(t => t.type === 'ingreso')
-    .slice(0, 5);
+  // Last 5 income transactions as "recent sales" - memoized for stability
+  const recentSales = useMemo(() => {
+    return (transacciones || [])
+      .filter(t => t.type === 'ingreso')
+      .slice(0, 5);
+  }, [transacciones]);
 
   // Build pie data from transactions by category
-  const catMap = transacciones
-    .filter(t => t.type === 'ingreso')
-    .reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + Number(t.amount); return acc; }, {});
-  const catColors = ['#1f9191', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
-  const categoryPie = Object.entries(catMap).map(([name, value], i) => ({ name, value, color: catColors[i % catColors.length] }));
+  const categoryPie = useMemo(() => {
+    const catMap = (transacciones || [])
+      .filter(t => t.type === 'ingreso' && t.category)
+      .reduce((acc, t) => { 
+        acc[t.category] = (acc[t.category] || 0) + Number(t.amount || 0); 
+        return acc; 
+      }, {});
+    const catColors = ['#1f9191', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
+    return Object.entries(catMap).map(([name, value], i) => ({ 
+      name, 
+      value, 
+      color: catColors[i % catColors.length] 
+    }));
+  }, [transacciones]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 12 }}>
@@ -139,7 +153,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<TooltipArea />} />
+              <Tooltip content={<TooltipArea fmt={fmt} />} />
               <Area type="monotone" dataKey="ventas" name="Ventas" stroke="#1f9191" strokeWidth={2.5} fill="url(#colorVentas)" dot={false} />
               <Area type="monotone" dataKey="meta" name="Meta" stroke="#10b981" strokeWidth={1.5} strokeDasharray="5 5" fill="none" dot={false} />
             </AreaChart>

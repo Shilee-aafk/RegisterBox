@@ -25,8 +25,7 @@ export function AppProvider({ children }) {
 
   /* ---- Configuration State ---- */
   const [config, setConfigState] = useState(() => {
-    const saved = localStorage.getItem('gestorpro-config');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       biz: {
         nombre: 'Mi Tienda (Ejemplo)',
         nit: '76.123.456-7',
@@ -40,6 +39,17 @@ export function AppProvider({ children }) {
       payments: { efectivo: true, tarjeta: true, transferencia: true },
       security: { dosFactores: false, cierreSesion: true },
     };
+    
+    const saved = localStorage.getItem('gestorpro-config');
+    const finalConfig = saved ? JSON.parse(saved) : defaults;
+    
+    // Safety check: ensure all sections exist
+    if (!finalConfig.appearance) finalConfig.appearance = defaults.appearance;
+    if (!finalConfig.biz) finalConfig.biz = defaults.biz;
+    if (!finalConfig.notifs) finalConfig.notifs = defaults.notifs;
+    if (!finalConfig.regional) finalConfig.regional = defaults.regional;
+    
+    return finalConfig;
   });
 
   const updateConfig = useCallback((section, key, value) => {
@@ -326,9 +336,9 @@ export function AppProvider({ children }) {
   ============================ */
   const today = new Date().toISOString().split('T')[0];
 
-  const ventasHoy = transacciones
-    .filter(t => t.type === 'ingreso' && t.created_at?.startsWith(today))
-    .reduce((s, t) => s + Number(t.amount), 0);
+  const ventasHoy = (transacciones || [])
+    .filter(t => t.type === 'ingreso' && t.created_at && t.created_at.startsWith(today))
+    .reduce((s, t) => s + Number(t.amount || 0), 0);
 
   const transaccionesHoy = transacciones.filter(
     t => t.type === 'ingreso' && t.created_at?.startsWith(today)
