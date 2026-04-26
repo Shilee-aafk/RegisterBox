@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { db } from '../lib/db';
+import { localDb } from '../lib/localDb';
+import { syncDown, syncUp } from '../lib/syncEngine';
 
 const AppContext = createContext(null);
 
@@ -20,9 +22,11 @@ export function AppProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState('connecting'); // 'connecting' | 'connected' | 'error'
   const [error, setError] = useState(null);
-
-  /* ---- Auth State ---- */
   const [currentUser, setCurrentUser] = useState(null);
+  const [empresaId, setEmpresaId] = useState(() => localStorage.getItem('empresa_id') || null);
+  const [empresaTipo, setEmpresaTipo] = useState(() => localStorage.getItem('empresa_tipo') || 'mixto');
+  const [firstTimeSetup, setFirstTimeSetup] = useState(false); // true cuando la empresa no tiene empleados
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, isDestructive: true });
 
   /* ---- Configuration State ---- */
   const [config, setConfigState] = useState(() => {
@@ -97,27 +101,89 @@ export function AppProvider({ children }) {
   /* ---- Fetch all data ---- */
   const fetchAll = useCallback(async () => {
     try {
+      // 1. Cargar local primero (Lectura ultrarrápida offline)
       const [p, c, e, ci, t] = await Promise.all([
-        db.productos.getAll(),
-        db.clientes.getAll(),
-        db.empleados.getAll(),
-        db.citas.getAll(),
-        db.transacciones.getAll(),
+        localDb.productos.toArray(),
+        localDb.clientes.toArray(),
+        localDb.empleados.toArray(),
+        localDb.citas.toArray(),
+        localDb.transacciones.toArray()
       ]);
-      setProductos(p || []);
-      setClientes(c || []);
-      setEmpleados(e || []);
-      setCitas(ci || []);
-      setTransacciones(t || []);
+      setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
+      setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
+      setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
+      setCitas(ci.sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
+      setTransacciones(t.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
       setConnected(true);
       setError(null);
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError(err.message);
-      setConnected(false);
+      console.error('Error loading local data:', err);
+      // Fallback a Supabase si Dexie falla por alguna razón
+      const [p, c, e, ci, t] = await Promise.all([ db.productos.getAll(), db.clientes.getAll(), db.empleados.getAll(), db.citas.getAll(), db.transacciones.getAll() ]);
+      setProductos(p || []); setClientes(c || []); setEmpleados(e || []); setCitas(ci || []); setTransacciones(t || []);
     } finally {
       setLoading(false);
     }
+
+    // 2. Sincronizar con la nube en segundo plano (Sync-Down y Sync-Up)
+    if (navigator.onLine) {
+      try {
+        await syncDown();
+        const [p, c, e, ci, t] = await Promise.all([
+          localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
+        ]);
+        setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
+        setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
+        setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
+        setCitas(ci.sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
+        setTransacciones(t.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
+        syncUp();
+      } catch (e) {
+        console.log('Sync Error:', e);
+      }
+    }
+  }, []);
+
+  // Temporizador para subir la cola de cambios a Supabase periódicamente
+  useEffect(() => {
+    const timer = setInterval(() => {
+      syncUp();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Recuperar sesión existente de Supabase al cargar la app
+  useEffect(() => {
+    async function restoreSession() {
+      const savedEmpresaId = localStorage.getItem('empresa_id');
+      if (!savedEmpresaId) return;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Sesión válida: restaurar empresa sin pedir email/password
+        setEmpresaId(savedEmpresaId);
+        setEmpresaTipo(localStorage.getItem('empresa_tipo') || 'mixto');
+        await fetchAll();
+        
+        // Verificar si ya hay empleados (local + nube)
+        const localEmps = await localDb.empleados.count();
+        if (localEmps === 0) {
+          const { count } = await supabase
+            .from('empleados')
+            .select('*', { count: 'exact', head: true })
+            .eq('empresa_id', savedEmpresaId);
+          if ((count || 0) === 0) {
+            setFirstTimeSetup(true);
+          }
+        }
+      } else {
+        // Sesión expirada: limpiar todo
+        localStorage.removeItem('empresa_id');
+        localStorage.removeItem('empresa_tipo');
+        setEmpresaId(null);
+      }
+    }
+    restoreSession();
   }, []);
 
   /* ---- Realtime subscriptions usando payload directo ---- */
@@ -340,6 +406,17 @@ export function AppProvider({ children }) {
   }
 
   /* ============================
+     CONFIRM DIALOG
+  ============================ */
+  const confirmAction = useCallback((title, message, onConfirm, isDestructive = true) => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, isDestructive });
+  }, []);
+
+  const closeConfirm = useCallback(() => {
+    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
+  /* ============================
      AUTH LOGIC
   ============================ */
   const processLogin = useCallback((pinCode) => {
@@ -369,12 +446,95 @@ export function AppProvider({ children }) {
     return { success: false };
   }, [empleados]);
 
+  const loginEmpresa = useCallback(async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      // Buscar la empresa asociada al usuario
+      const { data: perfil, error: perfilError } = await supabase
+        .from('perfiles_empresa')
+        .select('empresa_id, empresas(nombre, tipo)')
+        .eq('user_id', data.user.id)
+        .single();
+      if (perfilError || !perfil) throw new Error('No se encontró una empresa asociada a este usuario.');
+      const eid = perfil.empresa_id;
+      const tipo = perfil.empresas?.tipo || 'mixto';
+      setEmpresaId(eid);
+      setEmpresaTipo(tipo);
+      localStorage.setItem('empresa_id', eid);
+      localStorage.setItem('empresa_tipo', tipo);
+      // Disparar fetchAll ahora que tenemos empresa_id
+      await fetchAll();
+
+      // Detectar primera vez: verificar local primero, luego nube
+      const localEmps = await localDb.empleados.count();
+      if (localEmps === 0) {
+        const { count } = await supabase
+          .from('empleados')
+          .select('*', { count: 'exact', head: true })
+          .eq('empresa_id', eid);
+        if ((count || 0) === 0) {
+          setFirstTimeSetup(true);
+        }
+      }
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [fetchAll]);
+
+  // Crear administrador inicial en el primer setup
+  const createInitialAdmin = useCallback(async ({ name, pin }) => {
+    if (!empresaId) return;
+    const admin = {
+      name,
+      role: 'Administrador',
+      email: '',
+      phone: '',
+      salary: 0,
+      since: new Date().toISOString().slice(0, 10),
+      pin,
+      active: true,
+      ventas: 0,
+      total_vendido: 0,
+      empresa_id: empresaId,
+    };
+    const result = await db.empleados.insert(admin);
+    setFirstTimeSetup(false);
+    setCurrentUser(result);
+  }, [empresaId]);
+
+  // Cerrar sesión de empleado (solo vuelve al PIN, la empresa sigue conectada)
   const processLogout = useCallback(() => {
     setCurrentUser(null);
   }, []);
 
+  // Cerrar sesión completa de empresa (vuelve al login de email)
+  const logoutEmpresa = useCallback(async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setEmpresaId(null);
+    setEmpresaTipo('mixto');
+    localStorage.removeItem('empresa_id');
+    localStorage.removeItem('empresa_tipo');
+  }, []);
+
   const forceLogin = useCallback((user) => {
     setCurrentUser(user);
+  }, []);
+
+  // Reaccionar a cambios de sesión de Supabase Auth
+  useEffect(() => {
+    supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setCurrentUser(null);
+        setEmpresaId(null);
+        setEmpresaTipo('mixto');
+        localStorage.removeItem('empresa_id');
+        localStorage.removeItem('empresa_tipo');
+      }
+    });
   }, []);
 
   /* ============================
@@ -418,7 +578,7 @@ export function AppProvider({ children }) {
   const value = {
     /* State */
     productos, clientes, empleados, citas, transacciones,
-    loading, connected, realtimeStatus, error, config, currentUser,
+    loading, connected, realtimeStatus, error, config, currentUser, empresaId, empresaTipo, firstTimeSetup,
     /* Computed */
     ventasHoy, transaccionesHoy, citasHoy, stockAlerts, formatCurrency,
     /* Config */
@@ -440,7 +600,9 @@ export function AppProvider({ children }) {
     /* POS */
     processSale,
     /* Auth */
-    processLogin, processLogout, forceLogin,
+    processLogin, processLogout, logoutEmpresa, forceLogin, loginEmpresa, createInitialAdmin,
+    /* Confirm */
+    confirmAction, confirmDialog, closeConfirm,
     /* Refresh */
     refresh: fetchAll,
   };

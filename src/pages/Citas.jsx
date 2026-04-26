@@ -28,7 +28,7 @@ const STATUS_COLORS = {
 const EMPTY_FORM = { service: '', client_name: '', date: isoDate(new Date()), time: '09:00', duration: 30, price: 0, empleado_name: '' };
 
 export default function Citas() {
-  const { citas, addCita, updateCita, deleteCita, productos, clientes, addCliente, empleados, formatCurrency: fmt } = useApp();
+  const { citas, addCita, updateCita, deleteCita, productos, clientes, addCliente, empleados, formatCurrency: fmt, confirmAction } = useApp();
   const [today] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekStart, setWeekStart] = useState(() => {
@@ -137,8 +137,14 @@ export default function Citas() {
   }
 
   async function deleteCitaFn(id) {
-    try { await deleteCita(id); }
-    catch(e) { alert('Error: ' + e.message); }
+    confirmAction(
+      'Cancelar Cita',
+      '¿Estás seguro que deseas eliminar o cancelar esta cita permanentemente?',
+      async () => {
+        try { await deleteCita(id); }
+        catch(e) { alert('Error: ' + e.message); }
+      }
+    );
   }
 
   // Count appointments per day for dot display

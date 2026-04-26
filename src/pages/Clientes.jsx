@@ -30,7 +30,7 @@ const ALL_TAGS = ['VIP', 'Premium', 'Frecuente', 'Nuevo'];
 const EMPTY_FORM = { name: '', email: '', phone: '', address: '', tags: [] };
 
 export default function Clientes() {
-  const { clientes, addCliente, updateCliente, deleteCliente, formatCurrency: fmt } = useApp();
+  const { clientes, addCliente, updateCliente, deleteCliente, formatCurrency: fmt, confirmAction } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -77,11 +77,17 @@ export default function Clientes() {
 
   async function handleDelete(id, e) {
     e.stopPropagation();
-    if (!confirm('¿Eliminar este cliente?')) return;
-    try {
-      await deleteCliente(id);
-      if (selected?.id === id) setSelected(null);
-    } catch (e) { alert('Error: ' + e.message); }
+    const cliente = clientes.find(c => c.id === id);
+    confirmAction(
+      'Eliminar Cliente',
+      `¿Estás seguro que deseas eliminar al cliente "${cliente?.name}"? Esta acción es irreversible.`,
+      async () => {
+        try {
+          await deleteCliente(id);
+          if (selected?.id === id) setSelected(null);
+        } catch (err) { alert('Error: ' + err.message); }
+      }
+    );
   }
 
   return (

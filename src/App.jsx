@@ -15,11 +15,13 @@ import LoginScreen from './pages/LoginScreen';
 import Asistencia from './pages/Asistencia';
 import RegistroActividad from './pages/RegistroActividad';
 import Reportes from './pages/Reportes';
+import ConfirmModal from './components/ConfirmModal';
+import FirstTimeSetup from './pages/FirstTimeSetup';
 import { Toaster, toast } from 'sonner';
 import { useApp } from './context/AppContext';
 
 export default function App() {
-  const { config, stockAlerts, currentUser } = useApp();
+  const { loading, currentUser, empresaId, firstTimeSetup, config, stockAlerts } = useApp();
   const prevStockAlertsLen = useRef(0);
   const mounted = useRef(false);
 
@@ -55,9 +57,20 @@ export default function App() {
     prevStockAlertsLen.current = currentLen;
   }, [config?.notifs?.stockBajo, stockAlerts?.length, currentUser]);
 
-  if (!currentUser) {
+  if (!empresaId || !currentUser) {
+    // Si ya hay empresaId pero no hay empleados (primer uso), mostrar wizard
+    if (empresaId && firstTimeSetup) {
+      return (
+        <>
+          <ConfirmModal />
+          <Toaster position="top-right" richColors />
+          <FirstTimeSetup />
+        </>
+      );
+    }
     return (
       <>
+        <ConfirmModal />
         <Toaster position="top-right" richColors />
         <LoginScreen />
       </>
@@ -68,6 +81,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <ConfirmModal />
       <Toaster position="top-right" richColors closeButton />
       <Sidebar />
       <div className="main-content">

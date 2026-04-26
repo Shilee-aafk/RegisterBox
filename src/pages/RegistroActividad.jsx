@@ -77,13 +77,14 @@ export default function RegistroActividad() {
 
       <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div className="search-bar" style={{ flex: 1, margin: 0, maxWidth: 400 }}>
-            <Search size={16} />
+          <div className="search-input-wrap" style={{ flex: 1, maxWidth: 400 }}>
+            <Search size={14} color="var(--text-muted)" />
             <input 
               type="text" 
               placeholder="Buscar por empleado, acción o detalle..." 
               value={filter} 
               onChange={e => setFilter(e.target.value)} 
+              style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1, fontSize: 13, color: 'var(--text-primary)' }}
             />
           </div>
         </div>

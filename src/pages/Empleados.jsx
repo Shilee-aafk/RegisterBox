@@ -37,7 +37,7 @@ const ROLES = ['Administrador', 'Gerente', 'Personal', 'Cajero'];
 const EMPTY_FORM = { name: '', role: 'Personal', email: '', phone: '', salary: 0, since: new Date().toISOString().slice(0, 10), pin: '' };
 
 export default function Empleados() {
-  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado, formatCurrency: fmt, currentUser, obtenerReporteAsistencia, logAction } = useApp();
+  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado, formatCurrency: fmt, currentUser, obtenerReporteAsistencia, logAction, confirmAction } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -357,12 +357,17 @@ export default function Empleados() {
   }
 
   async function handleDeleteEmpleado(emp) {
-    if (!confirm(`¿Estás seguro que deseas ELIMINAR al empleado "${emp.name}"? Esta acción es irreversible.`)) return;
-    try {
-      await deleteEmpleado(emp.id);
-      await logAction('Eliminar Empleado', `Borró al empleado ${emp.name} permanentemente`, 'Empleados');
-      if (selected?.id === emp.id) setSelected(null);
-    } catch (e) { alert('Error al eliminar empleado: ' + e.message); }
+    confirmAction(
+      'Eliminar Empleado',
+      `¿Estás seguro que deseas ELIMINAR al empleado "${emp.name}"? Esta acción es irreversible.`,
+      async () => {
+        try {
+          await deleteEmpleado(emp.id);
+          await logAction('Eliminar Empleado', `Borró al empleado ${emp.name} permanentemente`, 'Empleados');
+          if (selected?.id === emp.id) setSelected(null);
+        } catch (e) { alert('Error al eliminar empleado: ' + e.message); }
+      }
+    );
   }
 
   const avatarIdx = (emp) => empleados.findIndex(e => e.id === emp.id) % AVATAR_COLORS.length;

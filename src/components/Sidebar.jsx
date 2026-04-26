@@ -8,24 +8,27 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/inventario', label: 'Inventario', icon: Package },
-  { to: '/punto-de-venta', label: 'Punto de Venta', icon: ShoppingCart },
-  { to: '/clientes', label: 'Clientes', icon: Users },
-  { to: '/empleados', label: 'Empleados', icon: UserCog },
-  { to: '/citas', label: 'Citas', icon: Calendar },
-  { to: '/finanzas', label: 'Finanzas', icon: DollarSign },
-  { to: '/automatizaciones', label: 'Automatizaciones', icon: Zap },
-  { to: '/asistencia', label: 'Asistencia', icon: Clock },
-  { to: '/registro-actividad', label: 'Registro Actividad', icon: Activity },
-  { to: '/reportes', label: 'Reportes', icon: FileSpreadsheet },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/inventario', label: 'Inventario', icon: Package, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/punto-de-venta', label: 'Punto de Venta', icon: ShoppingCart, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/clientes', label: 'Clientes', icon: Users, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/empleados', label: 'Empleados', icon: UserCog, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/citas', label: 'Citas', icon: Calendar, tipos: ['servicios', 'mixto'] },
+  { to: '/finanzas', label: 'Finanzas', icon: DollarSign, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/automatizaciones', label: 'Automatizaciones', icon: Zap, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/asistencia', label: 'Asistencia', icon: Clock, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/registro-actividad', label: 'Registro Actividad', icon: Activity, tipos: ['retail', 'servicios', 'mixto'] },
+  { to: '/reportes', label: 'Reportes', icon: FileSpreadsheet, tipos: ['retail', 'servicios', 'mixto'] },
 ];
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const { config, currentUser, processLogout } = useApp();
+  const { config, currentUser, processLogout, empresaTipo } = useApp();
 
   const filteredNavItems = navItems.filter(item => {
+    // Filtrar por tipo de negocio
+    if (!item.tipos.includes(empresaTipo || 'mixto')) return false;
+    // Filtrar por rol
     if (currentUser?.role === 'Cajero') {
       return item.label === 'Punto de Venta' || item.label === 'Clientes' || item.label === 'Asistencia';
     }

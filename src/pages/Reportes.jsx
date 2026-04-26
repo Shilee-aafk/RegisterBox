@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Reportes() {
   const { obtenerReporteAsistencia, formatCurrency, currentUser, empleados } = useApp();
@@ -153,83 +154,107 @@ export default function Reportes() {
         
         <div className="form-group" style={{ marginBottom: 16 }}>
           <label className="form-label">Tipo de Reporte</label>
-          <select className="form-select" value={tipo} onChange={e => { setTipo(e.target.value); setEmpleadoId('todos'); }}>
-            <option value="asistencia">Reporte de Asistencia</option>
-            <option value="ventas">Reporte de Ventas (Transacciones)</option>
-          </select>
+          <CustomSelect 
+            value={tipo} 
+            onChange={val => { setTipo(val); setEmpleadoId('todos'); }}
+            options={[
+              { value: 'asistencia', label: 'Reporte de Asistencia' },
+              { value: 'ventas', label: 'Reporte de Ventas (Transacciones)' }
+            ]}
+          />
         </div>
 
         {tipo === 'asistencia' && (
-          <div className="form-group" style={{ marginBottom: 16 }}>
+          <div className="form-group" style={{ marginBottom: 16, zIndex: 90 }}>
             <label className="form-label">Empleado</label>
-            <select className="form-select" value={empleadoId} onChange={e => setEmpleadoId(e.target.value)}>
-              <option value="todos">Todos los Empleados</option>
-              {empleados?.map(emp => (
-                <option key={emp.id} value={emp.id}>{emp.name}</option>
-              ))}
-            </select>
+            <CustomSelect 
+              value={empleadoId} 
+              onChange={setEmpleadoId}
+              options={[
+                { value: 'todos', label: 'Todos los Empleados' },
+                ...(empleados?.map(emp => ({ value: emp.id, label: emp.name })) || [])
+              ]}
+            />
           </div>
         )}
 
         {tipo === 'ventas' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, zIndex: 90 }}>
             <div className="form-group">
               <label className="form-label">Tipo de Venta</label>
-              <select className="form-select" value={tipoVenta} onChange={e => setTipoVenta(e.target.value)}>
-                <option value="todos">Todas las ventas</option>
-                <option value="Venta de Productos">Solo Productos</option>
-                <option value="Venta de Servicios">Solo Servicios</option>
-                <option value="Venta Mixta">Mixtas (Ambos)</option>
-              </select>
+              <CustomSelect 
+                value={tipoVenta} 
+                onChange={setTipoVenta}
+                options={[
+                  { value: 'todos', label: 'Todas las ventas' },
+                  { value: 'Venta de Productos', label: 'Solo Productos' },
+                  { value: 'Venta de Servicios', label: 'Solo Servicios' },
+                  { value: 'Venta Mixta', label: 'Mixtas (Ambos)' }
+                ]}
+              />
             </div>
             <div className="form-group">
               <label className="form-label">Método de Pago</label>
-              <select className="form-select" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
-                <option value="todos">Cualquier Método</option>
-                <option value="efectivo">Efectivo</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="transferencia">Transferencia</option>
-              </select>
+              <CustomSelect 
+                value={metodoPago} 
+                onChange={setMetodoPago}
+                options={[
+                  { value: 'todos', label: 'Cualquier Método' },
+                  { value: 'efectivo', label: 'Efectivo' },
+                  { value: 'tarjeta', label: 'Tarjeta' },
+                  { value: 'transferencia', label: 'Transferencia' }
+                ]}
+              />
             </div>
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, zIndex: 80 }}>
           <div className="form-group">
             <label className="form-label">Periodo</label>
-            <select className="form-select" value={periodo} onChange={e => setPeriodo(e.target.value)}>
-              <option value="mensual">Mensual Completo</option>
-              <option value="semanal">Por Semana</option>
-            </select>
+            <CustomSelect 
+              value={periodo} 
+              onChange={setPeriodo}
+              options={[
+                { value: 'mensual', label: 'Mensual Completo' },
+                { value: 'semanal', label: 'Por Semana' }
+              ]}
+            />
           </div>
 
           {periodo === 'semanal' && (
             <div className="form-group">
               <label className="form-label">Semana</label>
-              <select className="form-select" value={semana} onChange={e => setSemana(+e.target.value)}>
-                <option value={1}>Semana 1 (1 al 7)</option>
-                <option value={2}>Semana 2 (8 al 14)</option>
-                <option value={3}>Semana 3 (15 al 21)</option>
-                <option value={4}>Semana 4 (22 a fin de mes)</option>
-              </select>
+              <CustomSelect 
+                value={semana} 
+                onChange={val => setSemana(+val)}
+                options={[
+                  { value: 1, label: 'Semana 1 (1 al 7)' },
+                  { value: 2, label: 'Semana 2 (8 al 14)' },
+                  { value: 3, label: 'Semana 3 (15 al 21)' },
+                  { value: 4, label: 'Semana 4 (22 a fin de mes)' }
+                ]}
+              />
             </div>
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30, zIndex: 70 }}>
           <div className="form-group">
             <label className="form-label">Mes</label>
-            <select className="form-select" value={month} onChange={e => setMonth(+e.target.value)}>
-              {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => (
-                <option key={i+1} value={i+1}>{m}</option>
-              ))}
-            </select>
+            <CustomSelect 
+              value={month} 
+              onChange={val => setMonth(+val)}
+              options={['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => ({ value: i+1, label: m }))}
+            />
           </div>
           <div className="form-group">
             <label className="form-label">Año</label>
-            <select className="form-select" value={year} onChange={e => setYear(+e.target.value)}>
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <CustomSelect 
+              value={year} 
+              onChange={val => setYear(+val)}
+              options={[2024, 2025, 2026, 2027].map(y => ({ value: y, label: String(y) }))}
+            />
           </div>
         </div>
 

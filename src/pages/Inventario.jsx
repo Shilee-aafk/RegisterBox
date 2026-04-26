@@ -10,7 +10,7 @@ const EMPTY_FORM = {
 };
 
 export default function Inventario() {
-  const { productos, addProducto, updateProducto, deleteProducto, stockAlerts, formatCurrency: fmt, logAction } = useApp();
+  const { productos, addProducto, updateProducto, deleteProducto, stockAlerts, formatCurrency: fmt, logAction, confirmAction } = useApp();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('Todos');
   const [showModal, setShowModal] = useState(false);
@@ -64,13 +64,22 @@ export default function Inventario() {
     setSaving(false);
   }
 
-  async function handleDelete(id, name) {
-    if (!confirm('¿Eliminar este producto?')) return;
-    try { 
-      await deleteProducto(id); 
-      await logAction('Eliminar Producto', `Borró el producto: ${name}`, 'Inventario');
-    }
-    catch (e) { alert('Error eliminando: ' + e.message); }
+  async function handleDelete(id, name, category) {
+    const isService = category === 'Servicios';
+    const typeLabel = isService ? 'Servicio' : 'Producto';
+    const typeLabelLower = isService ? 'servicio' : 'producto';
+    
+    confirmAction(
+      `Eliminar ${typeLabel}`,
+      `¿Estás seguro que deseas eliminar el ${typeLabelLower} "${name}"?`,
+      async () => {
+        try { 
+          await deleteProducto(id); 
+          await logAction(`Eliminar ${typeLabel}`, `Borró el ${typeLabelLower}: ${name}`, 'Inventario');
+        }
+        catch (e) { alert('Error eliminando: ' + e.message); }
+      }
+    );
   }
 
   return (
@@ -168,7 +177,7 @@ export default function Inventario() {
                 </td>
                 <td>
                   <button className="action-btn edit" title="Editar" onClick={() => openEdit(p)}><Pencil size={15} /></button>
-                  <button className="action-btn delete" title="Eliminar" onClick={() => handleDelete(p.id, p.name)}><Trash2 size={15} /></button>
+                  <button className="action-btn delete" title="Eliminar" onClick={() => handleDelete(p.id, p.name, p.category)}><Trash2 size={15} /></button>
                 </td>
               </tr>
             );
