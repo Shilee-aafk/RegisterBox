@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   UserCog, Calendar, DollarSign, Zap, Settings,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Clock, FileSpreadsheet, Activity
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
@@ -16,6 +16,9 @@ const navItems = [
   { to: '/citas', label: 'Citas', icon: Calendar },
   { to: '/finanzas', label: 'Finanzas', icon: DollarSign },
   { to: '/automatizaciones', label: 'Automatizaciones', icon: Zap },
+  { to: '/asistencia', label: 'Asistencia', icon: Clock },
+  { to: '/registro-actividad', label: 'Registro Actividad', icon: Activity },
+  { to: '/reportes', label: 'Reportes', icon: FileSpreadsheet },
 ];
 
 export default function Sidebar() {
@@ -24,7 +27,10 @@ export default function Sidebar() {
 
   const filteredNavItems = navItems.filter(item => {
     if (currentUser?.role === 'Cajero') {
-      return item.label === 'Punto de Venta' || item.label === 'Clientes';
+      return item.label === 'Punto de Venta' || item.label === 'Clientes' || item.label === 'Asistencia';
+    }
+    if (currentUser?.role !== 'Administrador' && (item.label === 'Reportes' || item.label === 'Registro Actividad')) {
+      return false;
     }
     return true;
   });

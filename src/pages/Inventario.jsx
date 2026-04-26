@@ -10,7 +10,7 @@ const EMPTY_FORM = {
 };
 
 export default function Inventario() {
-  const { productos, addProducto, updateProducto, deleteProducto, stockAlerts, formatCurrency: fmt } = useApp();
+  const { productos, addProducto, updateProducto, deleteProducto, stockAlerts, formatCurrency: fmt, logAction } = useApp();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('Todos');
   const [showModal, setShowModal] = useState(false);
@@ -54,17 +54,22 @@ export default function Inventario() {
       const payload = { name: form.name, category: form.category, unit: form.unit, price: +form.price, cost: +form.cost, stock: +form.stock, min_stock: +form.min_stock, barcode: form.barcode };
       if (editId) {
         await updateProducto(editId, payload);
+        await logAction('Editar Producto', `Actualizó: ${form.name} | P: ${fmt(+form.price)} | S: ${form.stock}`, 'Inventario');
       } else {
         await addProducto(payload);
+        await logAction('Agregar Producto', `Añadió al catálogo: ${form.name}`, 'Inventario');
       }
       setShowModal(false);
     } catch (e) { alert('Error guardando: ' + e.message); }
     setSaving(false);
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(id, name) {
     if (!confirm('¿Eliminar este producto?')) return;
-    try { await deleteProducto(id); }
+    try { 
+      await deleteProducto(id); 
+      await logAction('Eliminar Producto', `Borró el producto: ${name}`, 'Inventario');
+    }
     catch (e) { alert('Error eliminando: ' + e.message); }
   }
 
@@ -163,7 +168,7 @@ export default function Inventario() {
                 </td>
                 <td>
                   <button className="action-btn edit" title="Editar" onClick={() => openEdit(p)}><Pencil size={15} /></button>
-                  <button className="action-btn delete" title="Eliminar" onClick={() => handleDelete(p.id)}><Trash2 size={15} /></button>
+                  <button className="action-btn delete" title="Eliminar" onClick={() => handleDelete(p.id, p.name)}><Trash2 size={15} /></button>
                 </td>
               </tr>
             );

@@ -10,7 +10,7 @@ const ALL_PAYMENT_METHODS = [
 ];
 
 export default function PuntoDeVenta() {
-  const { productos, clientes, processSale, config, formatCurrency: fmt } = useApp();
+  const { productos, clientes, processSale, config, formatCurrency: fmt, logAction } = useApp();
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [payMethod, setPayMethod] = useState('tarjeta');
@@ -75,6 +75,7 @@ export default function PuntoDeVenta() {
         clientId: selectedClientId || null,
         clientName: selectedClient?.name || null,
       });
+      await logAction('Completar Venta', `Total: ${fmt(total)} - Método: ${payMethod} - Items: ${cart.length}`, 'Punto de Venta');
       setSuccess(true);
       clearCart();
       setTimeout(() => setSuccess(false), 3000);

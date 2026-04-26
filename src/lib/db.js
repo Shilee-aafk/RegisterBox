@@ -154,6 +154,13 @@ export const db = {
       if (error) throw error;
       return data;
     },
+    async delete(id) {
+      const { error } = await supabase
+        .from('empleados')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
   },
 
   /* ==================== CITAS ==================== */
@@ -256,4 +263,70 @@ export const db = {
       if (error) throw error;
     },
   },
+
+  /* ==================== ASISTENCIAS EMPLEADOS ==================== */
+  asistencias: {
+    async getReporteMes(year, month) {
+      const start = `${year}-${String(month).padStart(2, '0')}-01`;
+      const end = new Date(year, month, 0).toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('asistencias_empleados')
+        .select(`
+          *,
+          empleados (name, role)
+        `)
+        .gte('fecha', start)
+        .lte('fecha', end)
+        .order('fecha', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    async getEstadoHoy(empleado_id) {
+      const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+      const today = (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('asistencias_empleados')
+        .select('*')
+        .eq('empleado_id', empleado_id)
+        .eq('fecha', today)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async marcar(empleado_id) {
+      const { data, error } = await supabase.rpc('marcar_asistencia', {
+        p_empleado_id: empleado_id
+      });
+      if (error) throw error;
+      return data; // { action: '...', data: { ... } }
+    }
+  },
+
+  /* ==================== AUDITORIA ==================== */
+  audit: {
+    async log(empleado_id, accion, detalle, modulo) {
+      try {
+        await supabase.from('audit_logs').insert([{
+          empleado_id,
+          accion,
+          detalle,
+          modulo
+        }]);
+      } catch (err) {
+        console.error('Error guardando audit log:', err);
+      }
+    },
+    async getRecent(limit = 100) {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select(`
+          *,
+          empleados (name, role)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data;
+    }
+  }
 };

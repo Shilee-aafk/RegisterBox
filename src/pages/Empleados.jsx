@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, Trash2, CalendarDays, Loader2 } from 'lucide-react';
+import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, Trash2, CalendarDays, Loader2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import './Empleados.css';
@@ -37,13 +37,31 @@ const ROLES = ['Administrador', 'Gerente', 'Personal', 'Cajero'];
 const EMPTY_FORM = { name: '', role: 'Personal', email: '', phone: '', salary: 0, since: new Date().toISOString().slice(0, 10), pin: '' };
 
 export default function Empleados() {
-  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, formatCurrency: fmt } = useApp();
+  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado, formatCurrency: fmt, currentUser, obtenerReporteAsistencia, logAction } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  const [showReport, setShowReport] = useState(false);
+  const [reportData, setReportData] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1);
+  const [reportYear, setReportYear] = useState(new Date().getFullYear());
+
+  async function loadReport() {
+    setReportLoading(true);
+    try {
+      const data = await obtenerReporteAsistencia(reportYear, reportMonth);
+      setReportData(data);
+    } catch (e) { alert(e.message); }
+    setReportLoading(false);
+  }
+  useEffect(() => {
+    if (showReport) loadReport();
+  }, [showReport, reportMonth, reportYear]);
 
   // ====== Planificador por Horas — 3-Click Assignment ======
   const HOURS = [
@@ -190,6 +208,7 @@ export default function Empleados() {
         else console.error('Insert error:', error.code, error.message);
         return;
       }
+      await logAction('Asignar Turno', `Asignó turno a ${emp.name} el ${DAYS.find(d=>d.key===dayKey)?.label} de ${hora_inicio} a ${hora_fin}`, 'Empleados');
       setHorarioSemanal(prev => ({
         ...prev,
         [dayKey]: [...prev[dayKey], {
@@ -215,6 +234,11 @@ export default function Empleados() {
       if (error) {
         console.error('Delete error:', error.message);
         setHorarioSemanal(prev => ({ ...prev, [dayKey]: backup }));
+      } else {
+        const shift = backup.find(s => s.horarioId === horarioId);
+        if (shift) {
+          await logAction('Eliminar Turno', `Eliminó turno de ${shift.name} el ${DAYS.find(d=>d.key===dayKey)?.label}`, 'Empleados');
+        }
       }
     } catch (err) { console.error(err); }
   }
@@ -317,8 +341,10 @@ export default function Empleados() {
       if (editId) {
         const r = await updateEmpleado(editId, { ...form, salary: +form.salary });
         if (selected?.id === editId) setSelected(r);
+        await logAction('Editar Empleado', `Modificó los datos de ${form.name}`, 'Empleados');
       } else {
         await addEmpleado({ ...form, salary: +form.salary, ventas: 0, total_vendido: 0, schedule, active: true });
+        await logAction('Agregar Empleado', `Creó un nuevo empleado: ${form.name} (${form.role})`, 'Empleados');
       }
       setShowModal(false);
     } catch (e) { alert('Error: ' + e.message); }
@@ -328,6 +354,15 @@ export default function Empleados() {
   async function handleToggleActive(emp) {
     try { await toggleEmpleadoActive(emp.id, !emp.active); }
     catch (e) { alert('Error: ' + e.message); }
+  }
+
+  async function handleDeleteEmpleado(emp) {
+    if (!confirm(`¿Estás seguro que deseas ELIMINAR al empleado "${emp.name}"? Esta acción es irreversible.`)) return;
+    try {
+      await deleteEmpleado(emp.id);
+      await logAction('Eliminar Empleado', `Borró al empleado ${emp.name} permanentemente`, 'Empleados');
+      if (selected?.id === emp.id) setSelected(null);
+    } catch (e) { alert('Error al eliminar empleado: ' + e.message); }
   }
 
   const avatarIdx = (emp) => empleados.findIndex(e => e.id === emp.id) % AVATAR_COLORS.length;
@@ -471,12 +506,19 @@ export default function Empleados() {
                 <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Calendar size={13} /> Horario Semanal
                 </p>
-                {DAYS.map(({ key, label }) => (
-                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5, color: selected.schedule?.[key] === 'Libre' ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
-                    <span>{label}</span>
-                    <span style={{ fontWeight: selected.schedule?.[key] === 'Libre' ? 400 : 500 }}>{selected.schedule?.[key] || 'No asignado'}</span>
-                  </div>
-                ))}
+                {DAYS.map(({ key, label }) => {
+                  const shifts = horarioSemanal[key]?.filter(s => String(s.id) === String(selected.id)) || [];
+                  const timeText = shifts.length > 0 
+                    ? shifts.map(s => `${s.hora_inicio} a ${s.hora_fin}`).join(', ')
+                    : 'Libre';
+                  
+                  return (
+                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5, color: timeText === 'Libre' ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
+                      <span>{label}</span>
+                      <span style={{ fontWeight: timeText === 'Libre' ? 400 : 600 }}>{timeText}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Actions */}
@@ -487,6 +529,14 @@ export default function Empleados() {
               </button>
                 <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={e => openEdit(selected, e)}>Editar</button>
               </div>
+              <button 
+                onClick={() => selected && handleDeleteEmpleado(selected)}
+                style={{ width: '100%', padding: '10px', marginTop: 8, background: '#fef2f2', color: '#ef4444', border: '1px solid #fee2e2', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'background 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
+                onMouseLeave={e => e.currentTarget.style.background = '#fef2f2'}
+              >
+                <Trash2 size={14} /> Eliminar Empleado
+              </button>
             </>
           )}
         </div>
@@ -755,6 +805,65 @@ export default function Empleados() {
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleSave} disabled={saving} id="emp-modal-guardar">{saving ? 'Guardando…' : editId ? 'Guardar' : 'Agregar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {showReport && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReport(false)}>
+          <div className="modal" style={{ maxWidth: 700 }}>
+            <div className="modal-header">
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Clock size={18} /> Reporte de Asistencia</h2>
+              <button className="modal-close" onClick={() => setShowReport(false)}><X size={16} /></button>
+            </div>
+            <div className="modal-body">
+              <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                <select className="form-select" value={reportMonth} onChange={e => setReportMonth(+e.target.value)}>
+                  {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                </select>
+                <select className="form-select" value={reportYear} onChange={e => setReportYear(+e.target.value)}>
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              {reportLoading ? <p style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>Cargando...</p> : (
+                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #eee', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Fecha</th>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Empleado</th>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Rol</th>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Entrada</th>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Salida</th>
+                        <th style={{ padding: 10, fontWeight: 600 }}>Horas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportData.map(r => {
+                        let hours = 0;
+                        if (r.hora_entrada && r.hora_salida) {
+                          const [h1,m1] = r.hora_entrada.split(':');
+                          const [h2,m2] = r.hora_salida.split(':');
+                          hours = ((h2*60 + +m2) - (h1*60 + +m1)) / 60;
+                        }
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid #f9fafb' }}>
+                            <td style={{ padding: 10 }}>{r.fecha.split('-').reverse().join('/')}</td>
+                            <td style={{ padding: 10, fontWeight: 500 }}>{r.empleados?.name}</td>
+                            <td style={{ padding: 10 }}><RoleBadge role={r.empleados?.role} /></td>
+                            <td style={{ padding: 10 }}>{r.hora_entrada || '-'}</td>
+                            <td style={{ padding: 10 }}>{r.hora_salida || '-'}</td>
+                            <td style={{ padding: 10, fontWeight: 600, color: hours > 0 ? 'var(--accent-blue)' : 'inherit' }}>{hours > 0 ? hours.toFixed(2) : '-'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  {reportData.length === 0 && <p style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No hay registros de asistencia en este mes.</p>}
+                </div>
+              )}
             </div>
           </div>
         </div>

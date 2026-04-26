@@ -233,6 +233,42 @@ export function AppProvider({ children }) {
   async function toggleEmpleadoActive(id, active) {
     await db.empleados.toggleActive(id, active);
   }
+  async function deleteEmpleado(id) {
+    await db.empleados.delete(id);
+  }
+
+  /* ============================
+     ASISTENCIAS
+  ============================ */
+  async function marcarAsistencia(pinCode) {
+    const match = empleados.find(e => String(e.pin) === String(pinCode));
+    if (!match || match.active === false) {
+      throw new Error('PIN incorrecto o empleado inactivo');
+    }
+    const res = await db.asistencias.marcar(match.id);
+    return { employee: match, ...res };
+  }
+  
+  async function obtenerReporteAsistencia(year, month) {
+    return await db.asistencias.getReporteMes(year, month);
+  }
+
+  async function obtenerEstadoAsistenciaHoy() {
+    if (!currentUser) return null;
+    return await db.asistencias.getEstadoHoy(currentUser.id);
+  }
+
+  /* ============================
+     AUDITORIA
+  ============================ */
+  async function logAction(accion, detalle, modulo) {
+    if (!currentUser) return;
+    await db.audit.log(currentUser.id, accion, detalle, modulo);
+  }
+
+  async function obtenerLogs(limit = 100) {
+    return await db.audit.getRecent(limit);
+  }
 
   /* ============================
      CITAS CRUD
@@ -272,12 +308,20 @@ export function AppProvider({ children }) {
       ? `Venta - ${clientName}`
       : 'Venta - Cliente General';
 
+    const hasProducts = cart.some(i => i.category !== 'Servicios');
+    const hasServices = cart.some(i => i.category === 'Servicios');
+    let tipoVenta = 'Ventas';
+    if (hasProducts && !hasServices) tipoVenta = 'Venta de Productos';
+    if (!hasProducts && hasServices) tipoVenta = 'Venta de Servicios';
+    if (hasProducts && hasServices) tipoVenta = 'Venta Mixta';
+
     // 1. Crear transacción (Realtime la propagará a todos)
     await db.transacciones.insert({
       description: desc,
-      category: 'Ventas',
+      category: tipoVenta,
       amount: total,
       type: 'ingreso',
+      payment_method: payMethod,
     });
 
     // 2. Decrementar stock (Realtime propagará cada UPDATE)
@@ -384,7 +428,11 @@ export function AppProvider({ children }) {
     /* Clientes */
     addCliente, updateCliente, deleteCliente,
     /* Empleados */
-    addEmpleado, updateEmpleado, toggleEmpleadoActive,
+    addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado,
+    /* Asistencias */
+    marcarAsistencia, obtenerReporteAsistencia, obtenerEstadoAsistenciaHoy,
+    /* Auditoria */
+    logAction, obtenerLogs,
     /* Citas */
     addCita, updateCita, deleteCita,
     /* Transacciones */

@@ -12,6 +12,9 @@ import Finanzas from './pages/Finanzas';
 import Automatizaciones from './pages/Automatizaciones';
 import Configuracion from './pages/Configuracion';
 import LoginScreen from './pages/LoginScreen';
+import Asistencia from './pages/Asistencia';
+import RegistroActividad from './pages/RegistroActividad';
+import Reportes from './pages/Reportes';
 import { Toaster, toast } from 'sonner';
 import { useApp } from './context/AppContext';
 
@@ -75,6 +78,7 @@ export default function App() {
               <Route path="/" element={<Navigate to="/punto-de-venta" replace />} />
               <Route path="/punto-de-venta" element={<PuntoDeVenta />} />
               <Route path="/clientes" element={<Clientes />} />
+              <Route path="/asistencia" element={<Asistencia />} />
               <Route path="*" element={<Navigate to="/punto-de-venta" replace />} />
             </>
           ) : (
@@ -87,6 +91,9 @@ export default function App() {
               <Route path="/citas" element={<Citas />} />
               <Route path="/finanzas" element={<Finanzas />} />
               <Route path="/automatizaciones" element={<Automatizaciones />} />
+              <Route path="/asistencia" element={<Asistencia />} />
+              <Route path="/registro-actividad" element={<RegistroActividad />} />
+              <Route path="/reportes" element={<Reportes />} />
               <Route path="/configuracion" element={<Configuracion />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
