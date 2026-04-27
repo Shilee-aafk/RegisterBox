@@ -125,10 +125,11 @@ export function AppProvider({ children }) {
       setLoading(false);
     }
 
-    // 2. Sincronizar con la nube en segundo plano (Sync-Down y Sync-Up)
+    // 2. Sincronizar con la nube en segundo plano (Sync-Up y Sync-Down)
     if (navigator.onLine) {
       try {
-        await syncDown();
+        await syncUp(); // PRIMERO subir cualquier cambio local pendiente
+        await syncDown(); // LUEGO descargar la info más reciente
         const [p, c, e, ci, t] = await Promise.all([
           localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
         ]);
@@ -137,7 +138,6 @@ export function AppProvider({ children }) {
         setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
         setCitas(ci.sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
         setTransacciones(t.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
-        syncUp();
       } catch (e) {
         console.log('Sync Error:', e);
       }
@@ -528,6 +528,14 @@ export function AppProvider({ children }) {
     setEmpresaTipo('mixto');
     localStorage.removeItem('empresa_id');
     localStorage.removeItem('empresa_tipo');
+    await Promise.all([
+      localDb.productos.clear(),
+      localDb.clientes.clear(),
+      localDb.empleados.clear(),
+      localDb.citas.clear(),
+      localDb.transacciones.clear(),
+      localDb.audit_logs.clear()
+    ]);
   }, []);
 
   const forceLogin = useCallback((user) => {

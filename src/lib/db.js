@@ -22,7 +22,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(product) {
-      product.id = product.id || generateLocalId();
+      product.id = product.id || generateLocalId('productos');
       product.empresa_id = product.empresa_id || getEmpresaId();
       if (!product.created_at) product.created_at = new Date().toISOString();
       await localDb.productos.add(product);
@@ -54,7 +54,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(client) {
-      client.id = client.id || generateLocalId();
+      client.id = client.id || generateLocalId('clientes');
       client.empresa_id = client.empresa_id || getEmpresaId();
       if (!client.created_at) client.created_at = new Date().toISOString();
       await localDb.clientes.add(client);
@@ -93,7 +93,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(emp) {
-      emp.id = emp.id || generateLocalId();
+      emp.id = emp.id || generateLocalId('empleados');
       emp.empresa_id = emp.empresa_id || getEmpresaId();
       if (!emp.created_at) emp.created_at = new Date().toISOString();
       await localDb.empleados.add(emp);
@@ -123,7 +123,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(cita) {
-      cita.id = cita.id || generateLocalId();
+      cita.id = cita.id || generateLocalId('citas');
       cita.empresa_id = cita.empresa_id || getEmpresaId();
       if (!cita.created_at) cita.created_at = new Date().toISOString();
       await localDb.citas.add(cita);
@@ -148,7 +148,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(t) {
-      t.id = t.id || generateLocalId();
+      t.id = t.id || generateLocalId('transacciones');
       t.empresa_id = t.empresa_id || getEmpresaId();
       if (!t.created_at) t.created_at = new Date().toISOString();
       await localDb.transacciones.add(t);
@@ -168,7 +168,7 @@ export const db = {
       if (error) throw error; return data;
     },
     async insert(empleado_id, dia_semana, hora_inicio, hora_fin) {
-      const h = { id: generateLocalId(), empleado_id, dia_semana, hora_inicio, hora_fin, empresa_id: getEmpresaId() };
+      const h = { id: generateLocalId('horarios_empleados'), empleado_id, dia_semana, hora_inicio, hora_fin, empresa_id: getEmpresaId() };
       await queueSync('horarios_empleados', 'INSERT', h);
       return h;
     },
@@ -195,8 +195,27 @@ export const db = {
       if (error) throw error; return data;
     },
     async marcar(empleado_id) {
-      await queueSync('rpc', 'marcar_asistencia', { p_empleado_id: empleado_id });
-      return { action: 'Encolado', data: null };
+      const hoy = await this.getEstadoHoy(empleado_id);
+      const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+      const now = new Date(Date.now() - tzoffset);
+      const fecha = now.toISOString().split('T')[0];
+      const hora = now.toISOString().split('T')[1].substring(0, 5); // HH:mm
+
+      if (!hoy) {
+        // Entrada
+        const data = { id: generateLocalId('asistencias_empleados'), empleado_id, fecha, hora_entrada: hora, empresa_id: getEmpresaId() };
+        const { error } = await supabase.from('asistencias_empleados').insert([data]);
+        if (error) throw error;
+        return { action: 'entrada', data };
+      } else if (!hoy.hora_salida) {
+        // Salida
+        const { error } = await supabase.from('asistencias_empleados').update({ hora_salida: hora }).eq('id', hoy.id);
+        if (error) throw error;
+        return { action: 'salida', data: { ...hoy, hora_salida: hora } };
+      } else {
+        // Completado
+        return { action: 'completado', data: hoy };
+      }
     }
   },
 
@@ -204,7 +223,7 @@ export const db = {
   audit: {
     async log(empleado_id, accion, detalle, modulo) {
       const item = {
-        id: generateLocalId(),
+        id: generateLocalId('audit_logs'),
         empleado_id,
         accion,
         detalle,

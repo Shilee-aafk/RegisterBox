@@ -2,18 +2,17 @@ import { localDb } from './localDb';
 import { supabase } from './supabase';
 
 /**
- * Función encargada de descargar los datos de Supabase y guardarlos en LocalDb
- * Esto asegura que la base de datos local siempre esté actualizada con la nube.
+ * Descarga datos de Supabase y actualiza la base de datos local.
+ * Solo sobreescribe si Supabase devolvió datos (evita borrar datos locales por RLS vacío).
  */
 export async function syncDown() {
   try {
-    // 1. Descargar todo de Supabase (en una app real se manejarían fechas de modificación para no descargar todo)
     const [
-      { data: productos },
-      { data: clientes },
-      { data: empleados },
-      { data: citas },
-      { data: transacciones }
+      { data: productos, error: e1 },
+      { data: clientes, error: e2 },
+      { data: empleados, error: e3 },
+      { data: citas, error: e4 },
+      { data: transacciones, error: e5 }
     ] = await Promise.all([
       supabase.from('productos').select('*'),
       supabase.from('clientes').select('*'),
@@ -22,59 +21,70 @@ export async function syncDown() {
       supabase.from('transacciones').select('*')
     ]);
 
-    // 2. Limpiar e insertar en localDb usando transacciones de Dexie para máxima velocidad
+    // Solo reemplazar si la respuesta fue exitosa y tiene datos
+    // Si Supabase devuelve null/error (por RLS, red, etc.), NO borrar lo local
     await localDb.transaction('rw', [localDb.productos, localDb.clientes, localDb.empleados, localDb.citas, localDb.transacciones], async () => {
-      
-      if (productos?.length) { await localDb.productos.clear(); await localDb.productos.bulkAdd(productos); }
-      if (clientes?.length) { await localDb.clientes.clear(); await localDb.clientes.bulkAdd(clientes); }
-      if (empleados?.length) { await localDb.empleados.clear(); await localDb.empleados.bulkAdd(empleados); }
-      if (citas?.length) { await localDb.citas.clear(); await localDb.citas.bulkAdd(citas); }
-      if (transacciones?.length) { await localDb.transacciones.clear(); await localDb.transacciones.bulkAdd(transacciones); }
-      
+      if (!e1 && productos) { await localDb.productos.clear(); await localDb.productos.bulkAdd(productos); }
+      if (!e2 && clientes) { await localDb.clientes.clear(); await localDb.clientes.bulkAdd(clientes); }
+      if (!e3 && empleados) { await localDb.empleados.clear(); await localDb.empleados.bulkAdd(empleados); }
+      if (!e4 && citas) { await localDb.citas.clear(); await localDb.citas.bulkAdd(citas); }
+      if (!e5 && transacciones) { await localDb.transacciones.clear(); await localDb.transacciones.bulkAdd(transacciones); }
     });
 
-    console.log("✅ Sync Down completado: Base de datos local actualizada con la nube.");
+    console.log("✅ Sync Down completado.");
   } catch (error) {
     console.error("❌ Error en Sync Down:", error);
+    alert("Hubo un error al descargar los datos de tu empresa. Es posible que veas datos antiguos. Error: " + error.message);
   }
 }
 
 /**
- * Función encargada de leer la cola local (sync_queue) y subir los cambios a Supabase.
+ * Lee la cola local y sube los cambios pendientes a Supabase.
+ * Verifica errores de cada operación antes de borrarla de la cola.
  */
 export async function syncUp() {
   try {
-    const isOnline = navigator.onLine;
-    if (!isOnline) return; // Si no hay internet, no intentar subir.
+    if (!navigator.onLine) return;
 
-    // Traer todos los cambios pendientes, ordenados por antigüedad
     const queue = await localDb.sync_queue.orderBy('timestamp').toArray();
     if (queue.length === 0) return;
 
-    console.log(`⏳ Intentando subir ${queue.length} cambios a la nube...`);
+    console.log(`⏳ Subiendo ${queue.length} cambios a la nube...`);
 
     for (const item of queue) {
       try {
+        let result;
+
         if (item.table === 'rpc') {
-          await supabase.rpc(item.action, item.data);
+          result = await supabase.rpc(item.action, item.data);
         } else if (item.action === 'INSERT') {
-          await supabase.from(item.table).insert([item.data]);
+          result = await supabase.from(item.table).upsert([item.data]);
         } else if (item.action === 'UPDATE') {
-          await supabase.from(item.table).update(item.data).eq('id', item.data.id);
+          const { id, ...updateData } = item.data;
+          result = await supabase.from(item.table).update(updateData).eq('id', id);
         } else if (item.action === 'DELETE') {
-          await supabase.from(item.table).delete().eq('id', item.data.id);
+          result = await supabase.from(item.table).delete().eq('id', item.data.id);
         }
-        
-        // Si funcionó, eliminamos el item de la cola
+
+        // Verificar si Supabase respondió con error
+        if (result?.error) {
+          console.error(`❌ Supabase rechazó ${item.action} en ${item.table}:`, result.error.message);
+          alert(`Hubo un problema guardando en la nube (${item.table}):\n${result.error.message}\n\nPor favor, envíame una captura de este error.`);
+          // Si es un error de Supabase (ej. RLS, datos inválidos), lo sacamos de la cola 
+          // para no bloquear el resto de los cambios.
+          await localDb.sync_queue.delete(item.id);
+          continue; 
+        }
+
+        // Éxito: eliminar de la cola
         await localDb.sync_queue.delete(item.id);
       } catch (err) {
-        console.error(`❌ Error sincronizando item ${item.id} (${item.action} en ${item.table}):`, err);
-        // Si hay un error, nos detenemos para no romper el orden y probar luego
-        break; 
+        console.error(`❌ Error sincronizando item (${item.action} en ${item.table}):`, err);
+        break;
       }
     }
-    
-    console.log("✅ Sync Up completado. Cola limpia.");
+
+    console.log("✅ Sync Up completado.");
   } catch (error) {
     console.error("❌ Error en Sync Up:", error);
   }
