@@ -256,18 +256,18 @@ export function AppProvider({ children }) {
      PRODUCTOS CRUD
   ============================ */
   async function addProducto(data) {
-    // Realtime INSERT event actualizará el estado automáticamente
     const r = await db.productos.insert(data);
+    setProductos(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateProducto(id, data) {
-    // Realtime UPDATE event actualizará el estado automáticamente
     const r = await db.productos.update(id, data);
+    setProductos(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     return r;
   }
   async function deleteProducto(id) {
-    // Realtime DELETE event actualizará el estado automáticamente
     await db.productos.delete(id);
+    setProductos(prev => prev.filter(p => p.id !== id));
   }
 
   /* ============================
@@ -275,14 +275,17 @@ export function AppProvider({ children }) {
   ============================ */
   async function addCliente(data) {
     const r = await db.clientes.insert(data);
+    setClientes(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateCliente(id, data) {
     const r = await db.clientes.update(id, data);
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     return r;
   }
   async function deleteCliente(id) {
     await db.clientes.delete(id);
+    setClientes(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
@@ -290,17 +293,21 @@ export function AppProvider({ children }) {
   ============================ */
   async function addEmpleado(data) {
     const r = await db.empleados.insert(data);
+    setEmpleados(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateEmpleado(id, data) {
     const r = await db.empleados.update(id, data);
+    setEmpleados(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
     return r;
   }
   async function toggleEmpleadoActive(id, active) {
     await db.empleados.toggleActive(id, active);
+    setEmpleados(prev => prev.map(e => e.id === id ? { ...e, active } : e));
   }
   async function deleteEmpleado(id) {
     await db.empleados.delete(id);
+    setEmpleados(prev => prev.filter(e => e.id !== id));
   }
 
   /* ============================
@@ -341,14 +348,17 @@ export function AppProvider({ children }) {
   ============================ */
   async function addCita(data) {
     const r = await db.citas.insert(data);
+    setCitas(prev => [...prev, r].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
     return r;
   }
   async function updateCita(id, data) {
     const r = await db.citas.update(id, data);
+    setCitas(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     return r;
   }
   async function deleteCita(id) {
     await db.citas.delete(id);
+    setCitas(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
@@ -356,12 +366,12 @@ export function AppProvider({ children }) {
   ============================ */
   async function addTransaccion(data) {
     const r = await db.transacciones.insert(data);
-    // Realtime INSERT lo propagará al estado
+    setTransacciones(prev => [r, ...prev]);
     return r;
   }
   async function deleteTransaccion(id) {
     await db.transacciones.delete(id);
-    // Realtime DELETE lo propagará al estado
+    setTransacciones(prev => prev.filter(t => t.id !== id));
   }
 
   /* ============================
