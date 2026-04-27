@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, Download, Loader2, CalendarDays, Users, CreditCard, Tag, Filter, BarChart3, Settings2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CustomSelect from '../components/CustomSelect';
 
@@ -139,79 +139,125 @@ export default function Reportes() {
   };
 
   return (
-    <div className="page-content">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--accent-blue-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <FileSpreadsheet size={20} color="var(--accent-blue)" />
+    <div className="page-content" style={{ animation: 'dropSlideDown 0.4s ease-out' }}>
+      
+      {/* Header Premium */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, var(--bg-card-dark) 0%, var(--bg-sidebar) 100%)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '30px 40px',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '24px',
+        marginBottom: '32px',
+        boxShadow: '0 10px 25px -5px rgba(31, 145, 145, 0.4)'
+      }}>
+        <div style={{ 
+          width: 64, 
+          height: 64, 
+          borderRadius: 20, 
+          background: 'rgba(255,255,255,0.2)', 
+          backdropFilter: 'blur(10px)',
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+        }}>
+          <BarChart3 size={32} color="#fff" />
         </div>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700 }}>Reportes Avanzados</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Filtra y exporta datos del sistema en formato CSV</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.5px', marginBottom: 6 }}>Centro de Reportes</h1>
+          <p style={{ fontSize: 15, opacity: 0.9, fontWeight: 400 }}>Genera analíticas detalladas y exporta los datos operativos de tu negocio.</p>
         </div>
       </div>
 
-      <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: 30, border: '1px solid var(--border)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)', maxWidth: 500 }}>
+      <div style={{ 
+        background: 'var(--bg-card)', 
+        borderRadius: 'var(--radius-xl)', 
+        padding: '40px', 
+        border: '1px solid var(--border)', 
+        boxShadow: 'var(--shadow-md)',
+        maxWidth: 800,
+        margin: '0 auto'
+      }}>
         
-        <div className="form-group" style={{ marginBottom: 16 }}>
-          <label className="form-label">Tipo de Reporte</label>
-          <CustomSelect 
-            value={tipo} 
-            onChange={val => { setTipo(val); setEmpleadoId('todos'); }}
-            options={[
-              { value: 'asistencia', label: 'Reporte de Asistencia' },
-              { value: 'ventas', label: 'Reporte de Ventas (Transacciones)' }
-            ]}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 30, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+          <Settings2 size={20} color="var(--accent-blue)" />
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Configuración del Reporte</h2>
         </div>
 
-        {tipo === 'asistencia' && (
-          <div className="form-group" style={{ marginBottom: 16, zIndex: 90 }}>
-            <label className="form-label">Empleado</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px 32px' }}>
+          
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+              <Filter size={16} color="var(--text-muted)" /> Tipo de Reporte
+            </label>
             <CustomSelect 
-              value={empleadoId} 
-              onChange={setEmpleadoId}
+              value={tipo} 
+              onChange={val => { setTipo(val); setEmpleadoId('todos'); }}
               options={[
-                { value: 'todos', label: 'Todos los Empleados' },
-                ...(empleados?.map(emp => ({ value: emp.id, label: emp.name })) || [])
+                { value: 'asistencia', label: 'Reporte de Asistencia' },
+                { value: 'ventas', label: 'Reporte de Ventas (Transacciones)' }
               ]}
             />
           </div>
-        )}
 
-        {tipo === 'ventas' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, zIndex: 90 }}>
-            <div className="form-group">
-              <label className="form-label">Tipo de Venta</label>
+          {tipo === 'asistencia' && (
+            <div className="form-group" style={{ gridColumn: '1 / -1', zIndex: 90 }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+                <Users size={16} color="var(--text-muted)" /> Empleado
+              </label>
               <CustomSelect 
-                value={tipoVenta} 
-                onChange={setTipoVenta}
+                value={empleadoId} 
+                onChange={setEmpleadoId}
                 options={[
-                  { value: 'todos', label: 'Todas las ventas' },
-                  { value: 'Venta de Productos', label: 'Solo Productos' },
-                  { value: 'Venta de Servicios', label: 'Solo Servicios' },
-                  { value: 'Venta Mixta', label: 'Mixtas (Ambos)' }
+                  { value: 'todos', label: 'Todos los Empleados' },
+                  ...(empleados?.map(emp => ({ value: emp.id, label: emp.name })) || [])
                 ]}
               />
             </div>
-            <div className="form-group">
-              <label className="form-label">Método de Pago</label>
-              <CustomSelect 
-                value={metodoPago} 
-                onChange={setMetodoPago}
-                options={[
-                  { value: 'todos', label: 'Cualquier Método' },
-                  { value: 'efectivo', label: 'Efectivo' },
-                  { value: 'tarjeta', label: 'Tarjeta' },
-                  { value: 'transferencia', label: 'Transferencia' }
-                ]}
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, zIndex: 80 }}>
-          <div className="form-group">
-            <label className="form-label">Periodo</label>
+          {tipo === 'ventas' && (
+            <>
+              <div className="form-group" style={{ zIndex: 90 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+                  <Tag size={16} color="var(--text-muted)" /> Tipo de Venta
+                </label>
+                <CustomSelect 
+                  value={tipoVenta} 
+                  onChange={setTipoVenta}
+                  options={[
+                    { value: 'todos', label: 'Todas las ventas' },
+                    { value: 'Venta de Productos', label: 'Solo Productos' },
+                    { value: 'Venta de Servicios', label: 'Solo Servicios' },
+                    { value: 'Venta Mixta', label: 'Mixtas (Ambos)' }
+                  ]}
+                />
+              </div>
+              <div className="form-group" style={{ zIndex: 90 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+                  <CreditCard size={16} color="var(--text-muted)" /> Método de Pago
+                </label>
+                <CustomSelect 
+                  value={metodoPago} 
+                  onChange={setMetodoPago}
+                  options={[
+                    { value: 'todos', label: 'Cualquier Método' },
+                    { value: 'efectivo', label: 'Efectivo' },
+                    { value: 'tarjeta', label: 'Tarjeta' },
+                    { value: 'transferencia', label: 'Transferencia' }
+                  ]}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="form-group" style={{ zIndex: 80 }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+              <CalendarDays size={16} color="var(--text-muted)" /> Periodo
+            </label>
             <CustomSelect 
               value={periodo} 
               onChange={setPeriodo}
@@ -222,9 +268,11 @@ export default function Reportes() {
             />
           </div>
 
-          {periodo === 'semanal' && (
-            <div className="form-group">
-              <label className="form-label">Semana</label>
+          {periodo === 'semanal' ? (
+            <div className="form-group" style={{ zIndex: 80 }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+                <CalendarDays size={16} color="var(--text-muted)" /> Semana
+              </label>
               <CustomSelect 
                 value={semana} 
                 onChange={val => setSemana(+val)}
@@ -236,20 +284,25 @@ export default function Reportes() {
                 ]}
               />
             </div>
+          ) : (
+            <div></div>
           )}
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30, zIndex: 70 }}>
-          <div className="form-group">
-            <label className="form-label">Mes</label>
+          <div className="form-group" style={{ zIndex: 70 }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+              <CalendarDays size={16} color="var(--text-muted)" /> Mes
+            </label>
             <CustomSelect 
               value={month} 
               onChange={val => setMonth(+val)}
               options={['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => ({ value: i+1, label: m }))}
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">Año</label>
+
+          <div className="form-group" style={{ zIndex: 70 }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
+              <CalendarDays size={16} color="var(--text-muted)" /> Año
+            </label>
             <CustomSelect 
               value={year} 
               onChange={val => setYear(+val)}
@@ -258,15 +311,31 @@ export default function Reportes() {
           </div>
         </div>
 
-        <button 
-          onClick={handleDownload} 
-          disabled={loading}
-          className="btn-primary" 
-          style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: 15 }}
-        >
-          {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={18} />}
-          {loading ? 'Generando...' : 'Descargar Reporte (CSV)'}
-        </button>
+        <div style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
+          <button 
+            onClick={handleDownload} 
+            disabled={loading}
+            className="btn-primary" 
+            style={{ 
+              width: '100%', 
+              justifyContent: 'center', 
+              padding: '16px', 
+              fontSize: 16,
+              background: 'linear-gradient(135deg, var(--bg-sidebar) 0%, var(--bg-card-dark) 100%)',
+              border: 'none',
+              boxShadow: '0 8px 20px -6px rgba(31, 145, 145, 0.5)',
+              transition: 'all 0.2s ease',
+              transform: loading ? 'scale(0.98)' : 'scale(1)',
+              opacity: loading ? 0.8 : 1
+            }}
+            onMouseEnter={(e) => { if(!loading) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseLeave={(e) => { if(!loading) e.currentTarget.style.transform = 'translateY(0)'; }}
+          >
+            {loading ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={20} />}
+            <span style={{ fontWeight: 700, letterSpacing: '0.5px' }}>{loading ? 'Generando Reporte...' : 'Descargar Reporte (CSV)'}</span>
+          </button>
+        </div>
+
       </div>
     </div>
   );
