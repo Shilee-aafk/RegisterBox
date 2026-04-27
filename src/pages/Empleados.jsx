@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Users, DollarSign, Shield, Search, Pencil, X, Mail, Phone, Calendar, Wallet, User, Trash2, CalendarDays, Loader2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
+import { db } from '../lib/db';
 import './Empleados.css';
 
 
@@ -199,16 +200,8 @@ export default function Empleados() {
     setHoveredDay(null);
 
     try {
-      const { data, error } = await supabase
-        .from('horarios_empleados')
-        .insert([{ empleado_id: emp.id, dia_semana: dayKey, hora_inicio, hora_fin }])
-        .select().single();
-      if (error) {
-        if (error.code === '23505') console.warn('Turno duplicado');
-        else console.error('Insert error:', error.code, error.message);
-        return;
-      }
-      await logAction('Asignar Turno', `Asignó turno a ${emp.name} el ${DAYS.find(d=>d.key===dayKey)?.label} de ${hora_inicio} a ${hora_fin}`, 'Empleados');
+      // Local-first: queue for sync and update state optimistically
+      const data = await db.horarios.insert(emp.id, dayKey, hora_inicio, hora_fin);
       setHorarioSemanal(prev => ({
         ...prev,
         [dayKey]: [...prev[dayKey], {
@@ -216,6 +209,7 @@ export default function Empleados() {
           hora_inicio, hora_fin,
         }],
       }));
+      await logAction('Asignar Turno', `Asignó turno a ${emp.name} el ${DAYS.find(d=>d.key===dayKey)?.label} de ${hora_inicio} a ${hora_fin}`, 'Empleados');
     } catch (err) { console.error('Insert error:', err); }
   }
 
@@ -227,28 +221,37 @@ export default function Empleados() {
 
   // --- Remove & Clear ---
   async function handleRemoveShift(dayKey, horarioId) {
+    // Clear tooltip and hover immediately since the element is about to be removed
+    clearTimeout(tooltipTimer.current);
+    setTooltip(null);
+    setHoveredEmpleadoId(null);
+
     const backup = horarioSemanal[dayKey];
+    // Optimistic: remove from UI immediately
     setHorarioSemanal(prev => ({ ...prev, [dayKey]: prev[dayKey].filter(s => s.horarioId !== horarioId) }));
     try {
-      const { error } = await supabase.from('horarios_empleados').delete().eq('id', horarioId);
-      if (error) {
-        console.error('Delete error:', error.message);
-        setHorarioSemanal(prev => ({ ...prev, [dayKey]: backup }));
-      } else {
-        const shift = backup.find(s => s.horarioId === horarioId);
-        if (shift) {
-          await logAction('Eliminar Turno', `Eliminó turno de ${shift.name} el ${DAYS.find(d=>d.key===dayKey)?.label}`, 'Empleados');
-        }
+      // Local-first: queue delete for sync
+      await db.horarios.delete(horarioId);
+      const shift = backup.find(s => s.horarioId === horarioId);
+      if (shift) {
+        await logAction('Eliminar Turno', `Eliminó turno de ${shift.name} el ${DAYS.find(d=>d.key===dayKey)?.label}`, 'Empleados');
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      setHorarioSemanal(prev => ({ ...prev, [dayKey]: backup }));
+    }
   }
 
   async function handleClearPlanner() {
     const backup = { ...horarioSemanal };
     setHorarioSemanal(buildEmptyDays());
     try {
-      const { error } = await supabase.from('horarios_empleados').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (error) { console.error(error.message); setHorarioSemanal(backup); }
+      // Queue individual deletes for each shift through the sync engine
+      for (const dayKey of Object.keys(backup)) {
+        for (const shift of backup[dayKey]) {
+          await db.horarios.delete(shift.horarioId);
+        }
+      }
     } catch (err) { console.error(err); setHorarioSemanal(backup); }
   }
 
