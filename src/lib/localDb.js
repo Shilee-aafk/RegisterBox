@@ -3,11 +3,9 @@ import Dexie from 'dexie';
 // Inicializamos la base de datos local
 export const localDb = new Dexie('GestorProDB');
 
-// Definimos el esquema de la base de datos (tablas y sus índices principales)
-// NOTA: No es necesario definir todas las columnas, solo las que se usarán para buscar (índices).
-// "id" es siempre la clave primaria en nuestras tablas porque usamos UUIDs.
-localDb.version(1).stores({
-  productos: 'id, category, name',
+localDb.version(3).stores({
+  categorias: 'id, nombre',
+  productos: 'id, category, categoria_id, tipo_promocion, name',
   clientes: 'id, name',
   empleados: 'id, name, role',
   citas: 'id, date, status',
@@ -21,7 +19,7 @@ localDb.version(1).stores({
 
 export function generateLocalId(table) {
   // Supabase tiene algunas tablas con ID UUID (nuevas) y otras con BIGINT (viejas).
-  const uuidTables = ['audit_logs', 'horarios_empleados', 'asistencias_empleados', 'empresas', 'perfiles_empresa'];
+  const uuidTables = ['audit_logs', 'horarios_empleados', 'asistencias_empleados', 'empresas', 'perfiles_empresa', 'categorias'];
   
   if (uuidTables.includes(table)) {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();

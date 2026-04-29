@@ -13,7 +13,6 @@ export default function Reportes() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [empleadoId, setEmpleadoId] = useState('todos');
   const [metodoPago, setMetodoPago] = useState('todos');
-  const [tipoVenta, setTipoVenta] = useState('todos');
   const [loading, setLoading] = useState(false);
 
   // Solo Administrador
@@ -99,9 +98,6 @@ export default function Reportes() {
         if (error) throw error;
         
         let filteredData = data;
-        if (tipoVenta !== 'todos') {
-          filteredData = filteredData.filter(t => t.category === tipoVenta || (tipoVenta === 'Ventas' && t.category === 'Ventas'));
-        }
         
         csvContent += "Fecha,Descripcion,Monto,Metodo,Categoria\n";
         filteredData.forEach(t => {
@@ -221,21 +217,7 @@ export default function Reportes() {
 
           {tipo === 'ventas' && (
             <>
-              <div className="form-group" style={{ zIndex: 90 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
-                  <Tag size={16} color="var(--text-muted)" /> Tipo de Venta
-                </label>
-                <CustomSelect 
-                  value={tipoVenta} 
-                  onChange={setTipoVenta}
-                  options={[
-                    { value: 'todos', label: 'Todas las ventas' },
-                    { value: 'Venta de Productos', label: 'Solo Productos' },
-                    { value: 'Venta de Servicios', label: 'Solo Servicios' },
-                    { value: 'Venta Mixta', label: 'Mixtas (Ambos)' }
-                  ]}
-                />
-              </div>
+
               <div className="form-group" style={{ zIndex: 90 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
                   <CreditCard size={16} color="var(--text-muted)" /> Método de Pago

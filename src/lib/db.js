@@ -13,8 +13,33 @@ async function queueSync(table, action, data) {
   syncUp(); // Intentar subir en background
 }
 
-/* ==================== PRODUCTOS ==================== */
+/* ==================== CATEGORIAS ==================== */
 export const db = {
+  categorias: {
+    async getAll() {
+      const { data, error } = await supabase.from('categorias').select('*').order('nombre');
+      if (error) throw error; return data;
+    },
+    async insert(cat) {
+      cat.id = cat.id || generateLocalId('categorias');
+      cat.empresa_id = cat.empresa_id || getEmpresaId();
+      if (!cat.created_at) cat.created_at = new Date().toISOString();
+      await localDb.categorias.add(cat);
+      await queueSync('categorias', 'INSERT', cat);
+      return cat;
+    },
+    async update(id, updates) {
+      await localDb.categorias.update(id, updates);
+      await queueSync('categorias', 'UPDATE', { id, ...updates });
+      return { id, ...updates };
+    },
+    async delete(id) {
+      await localDb.categorias.delete(id);
+      await queueSync('categorias', 'DELETE', { id });
+    },
+  },
+
+  /* ==================== PRODUCTOS ==================== */
   productos: {
     async getAll() {
       // Se sigue usando como fallback si falla la lectura local en AppContext

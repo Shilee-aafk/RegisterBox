@@ -13,6 +13,7 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
+  const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -102,13 +103,15 @@ export function AppProvider({ children }) {
   const fetchAll = useCallback(async () => {
     try {
       // 1. Cargar local primero (Lectura ultrarrápida offline)
-      const [p, c, e, ci, t] = await Promise.all([
+      const [cat, p, c, e, ci, t] = await Promise.all([
+        localDb.categorias.toArray(),
         localDb.productos.toArray(),
         localDb.clientes.toArray(),
         localDb.empleados.toArray(),
         localDb.citas.toArray(),
         localDb.transacciones.toArray()
       ]);
+      setCategorias(cat.sort((a,b) => a.nombre.localeCompare(b.nombre)));
       setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
       setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
       setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
@@ -119,8 +122,8 @@ export function AppProvider({ children }) {
     } catch (err) {
       console.error('Error loading local data:', err);
       // Fallback a Supabase si Dexie falla por alguna razón
-      const [p, c, e, ci, t] = await Promise.all([ db.productos.getAll(), db.clientes.getAll(), db.empleados.getAll(), db.citas.getAll(), db.transacciones.getAll() ]);
-      setProductos(p || []); setClientes(c || []); setEmpleados(e || []); setCitas(ci || []); setTransacciones(t || []);
+      const [cat, p, c, e, ci, t] = await Promise.all([ db.categorias.getAll(), db.productos.getAll(), db.clientes.getAll(), db.empleados.getAll(), db.citas.getAll(), db.transacciones.getAll() ]);
+      setCategorias(cat || []); setProductos(p || []); setClientes(c || []); setEmpleados(e || []); setCitas(ci || []); setTransacciones(t || []);
     } finally {
       setLoading(false);
     }
@@ -130,9 +133,10 @@ export function AppProvider({ children }) {
       try {
         await syncUp(); // PRIMERO subir cualquier cambio local pendiente
         await syncDown(); // LUEGO descargar la info más reciente
-        const [p, c, e, ci, t] = await Promise.all([
-          localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
+        const [cat, p, c, e, ci, t] = await Promise.all([
+          localDb.categorias.toArray(), localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
         ]);
+        setCategorias(cat.sort((a,b) => a.nombre.localeCompare(b.nombre)));
         setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
         setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
         setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
@@ -202,6 +206,16 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'productos' }, ({ old: row }) => {
         setProductos(prev => prev.filter(p => p.id !== row.id));
       })
+      // ---- CATEGORIAS ----
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'categorias' }, ({ new: row }) => {
+        setCategorias(prev => [...prev, row].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'categorias' }, ({ new: row }) => {
+        setCategorias(prev => prev.map(c => c.id === row.id ? row : c));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'categorias' }, ({ old: row }) => {
+        setCategorias(prev => prev.filter(c => c.id !== row.id));
+      })
       // ---- CLIENTES ----
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clientes' }, ({ new: row }) => {
         setClientes(prev => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
@@ -251,6 +265,24 @@ export function AppProvider({ children }) {
 
     return () => supabase.removeChannel(channel);
   }, [fetchAll]);
+
+  /* ============================
+     CATEGORIAS CRUD
+  ============================ */
+  async function addCategoria(data) {
+    const r = await db.categorias.insert(data);
+    setCategorias(prev => [...prev, r].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    return r;
+  }
+  async function updateCategoria(id, data) {
+    const r = await db.categorias.update(id, data);
+    setCategorias(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    return r;
+  }
+  async function deleteCategoria(id) {
+    await db.categorias.delete(id);
+    setCategorias(prev => prev.filter(c => c.id !== id));
+  }
 
   /* ============================
      PRODUCTOS CRUD
@@ -335,7 +367,7 @@ export function AppProvider({ children }) {
      AUDITORIA
   ============================ */
   async function logAction(accion, detalle, modulo) {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.id === 'admin-master') return;
     await db.audit.log(currentUser.id, accion, detalle, modulo);
   }
 
@@ -384,12 +416,7 @@ export function AppProvider({ children }) {
       ? `Venta - ${clientName}`
       : 'Venta - Cliente General';
 
-    const hasProducts = cart.some(i => i.category !== 'Servicios');
-    const hasServices = cart.some(i => i.category === 'Servicios');
     let tipoVenta = 'Ventas';
-    if (hasProducts && !hasServices) tipoVenta = 'Venta de Productos';
-    if (!hasProducts && hasServices) tipoVenta = 'Venta de Servicios';
-    if (hasProducts && hasServices) tipoVenta = 'Venta Mixta';
 
     // 1. Crear transacción (Realtime la propagará a todos)
     await db.transacciones.insert({
@@ -402,7 +429,7 @@ export function AppProvider({ children }) {
 
     // 2. Decrementar stock (Realtime propagará cada UPDATE)
     for (const item of cart) {
-      if (item.category !== 'Servicios' && item.stock < 999) {
+      if (item.stock < 999999) { // Ignorar servicios con stock infinito manual
         await db.productos.update(item.id, {
           stock: Math.max(0, item.stock - item.qty),
         });
@@ -571,7 +598,7 @@ export function AppProvider({ children }) {
   const citasHoy = citas.filter(c => c.date === today);
 
   const stockAlerts = productos.filter(
-    p => p.category !== 'Servicios' && p.stock < p.min_stock
+    p => p.stock < p.min_stock
   );
 
   const formatCurrency = useCallback((amount) => {
@@ -595,12 +622,14 @@ export function AppProvider({ children }) {
 
   const value = {
     /* State */
-    productos, clientes, empleados, citas, transacciones,
+    categorias, productos, clientes, empleados, citas, transacciones,
     loading, connected, realtimeStatus, error, config, currentUser, empresaId, empresaTipo, firstTimeSetup,
     /* Computed */
     ventasHoy, transaccionesHoy, citasHoy, stockAlerts, formatCurrency,
     /* Config */
     updateConfig,
+    /* Categorias */
+    addCategoria, updateCategoria, deleteCategoria,
     /* Productos */
     addProducto, updateProducto, deleteProducto,
     /* Clientes */
