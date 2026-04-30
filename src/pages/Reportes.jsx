@@ -42,19 +42,62 @@ export default function Reportes() {
 
       if (tipo === 'asistencia') {
         let data = await obtenerReporteAsistencia(year, month);
+        const { data: horarios } = await supabase.from('horarios_empleados').select('*');
         
-        // Filtrar por empleado si se seleccionó uno
+        const todayObj = new Date();
+        const currentMonth = todayObj.getMonth() + 1;
+        const currentYear = todayObj.getFullYear();
+        const currentDay = todayObj.getDate();
+        
+        let actualEndDay = endDay;
+        if (year === currentYear && month === currentMonth) {
+           actualEndDay = Math.min(endDay, currentDay);
+        } else if (year > currentYear || (year === currentYear && month > currentMonth)) {
+           actualEndDay = 0;
+        }
+
+        const daysArr = ['dom','lun','mar','mie','jue','vie','sab'];
+        
+        // Inyectar faltas
+        for (let d = startDay; d <= actualEndDay; d++) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const dateObj = new Date(year, month - 1, d);
+          const dayKey = daysArr[dateObj.getDay()];
+          
+          empleados.forEach(emp => {
+            if (empleadoId !== 'todos' && String(emp.id) !== String(empleadoId)) return;
+            if (emp.active === false) return; // No contar faltas de inactivos
+            
+            const empShifts = horarios?.filter(h => String(h.empleado_id) === String(emp.id) && h.dia_semana === dayKey) || [];
+            const empAttendance = data.filter(r => String(r.empleado_id) === String(emp.id) && r.fecha === dateStr);
+            
+            const faltas = empShifts.length - empAttendance.length;
+            for (let i = 0; i < faltas; i++) {
+              data.push({
+                fecha: dateStr,
+                empleados: { name: emp.name, role: emp.role },
+                empleado_id: emp.id,
+                hora_entrada: 'Falta',
+                hora_salida: 'Falta'
+              });
+            }
+          });
+        }
+        
+        // Filtrar por empleado original
         if (empleadoId !== 'todos') {
           data = data.filter(r => String(r.empleado_id) === String(empleadoId));
         }
         
-        // Filtrar por periodo si es semanal
         if (periodo === 'semanal') {
           data = data.filter(r => {
             const d = parseInt(r.fecha.split('-')[2]);
             return d >= startDay && d <= endDay;
           });
         }
+        
+        // Ordenar por fecha descendente
+        data.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
         csvContent += "Fecha,Empleado,Rol,Entrada,Salida,Horas Trabajadas\n";
         
@@ -266,9 +309,7 @@ export default function Reportes() {
                 ]}
               />
             </div>
-          ) : (
-            <div></div>
-          )}
+          ) : null}
 
           <div className="form-group" style={{ zIndex: 70 }}>
             <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>

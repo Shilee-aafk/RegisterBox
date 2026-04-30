@@ -3,7 +3,8 @@ import Dexie from 'dexie';
 // Inicializamos la base de datos local
 export const localDb = new Dexie('GestorProDB');
 
-localDb.version(3).stores({
+localDb.version(4).stores({
+  locales: 'id, nombre',
   categorias: 'id, nombre',
   productos: 'id, category, categoria_id, tipo_promocion, name',
   clientes: 'id, name',
@@ -19,7 +20,7 @@ localDb.version(3).stores({
 
 export function generateLocalId(table) {
   // Supabase tiene algunas tablas con ID UUID (nuevas) y otras con BIGINT (viejas).
-  const uuidTables = ['audit_logs', 'horarios_empleados', 'asistencias_empleados', 'empresas', 'perfiles_empresa', 'categorias'];
+  const uuidTables = ['locales', 'audit_logs', 'horarios_empleados', 'asistencias_empleados', 'empresas', 'perfiles_empresa', 'categorias'];
   
   if (uuidTables.includes(table)) {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();

@@ -35,10 +35,10 @@ const DAYS = [
 ];
 
 const ROLES = ['Administrador', 'Gerente', 'Personal', 'Cajero'];
-const EMPTY_FORM = { name: '', role: 'Personal', email: '', phone: '', salary: 0, since: new Date().toISOString().slice(0, 10), pin: '' };
+const EMPTY_FORM = { name: '', role: 'Personal', email: '', phone: '', salary: 0, since: new Date().toISOString().slice(0, 10), pin: '', local_id: '' };
 
 export default function Empleados() {
-  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado, formatCurrency: fmt, currentUser, obtenerReporteAsistencia, logAction, confirmAction } = useApp();
+  const { empleados, addEmpleado, updateEmpleado, toggleEmpleadoActive, deleteEmpleado, formatCurrency: fmt, currentUser, obtenerReporteAsistencia, logAction, confirmAction, locales, isGlobalAdmin } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -193,6 +193,29 @@ export default function Empleados() {
     const hora_inicio = seleccionTurno.startHour;
     const hora_fin = hour;
     const emp = empSeleccionado;
+
+    const existingShifts = horarioSemanal[dayKey]?.filter(s => s.id === emp.id) || [];
+    const newStart = hIdx(hora_inicio);
+    const newEnd = hIdx(hora_fin);
+
+    const hasOverlap = existingShifts.some(shift => {
+      const eStart = hIdx(shift.hora_inicio);
+      const eEnd = hIdx(shift.hora_fin);
+      return newStart <= eEnd && newEnd >= eStart;
+    });
+
+    if (hasOverlap) {
+      confirmAction(
+        'Cruce de Horarios',
+        `El empleado ${emp.name} ya tiene un turno en ese horario o se cruza con este nuevo horario. Por favor revisa las horas asignadas.`,
+        () => {},
+        false
+      );
+      setSeleccionTurno(null);
+      setEmpSeleccionado(null);
+      setHoveredDay(null);
+      return;
+    }
 
     // Clear selection state immediately
     setSeleccionTurno(null);
@@ -355,8 +378,28 @@ export default function Empleados() {
   }
 
   async function handleToggleActive(emp) {
-    try { await toggleEmpleadoActive(emp.id, !emp.active); }
-    catch (e) { alert('Error: ' + e.message); }
+    if (emp.active !== false) {
+      confirmAction(
+        'Desactivar Cuenta',
+        `¿Estás seguro que deseas desactivar la cuenta de ${emp.name}? El usuario no podrá acceder al sistema mientras esté desactivado.`,
+        async () => {
+          try { 
+            await toggleEmpleadoActive(emp.id, false);
+            if (selected?.id === emp.id) setSelected(prev => ({ ...prev, active: false }));
+            await logAction('Desactivar Empleado', `Desactivó la cuenta de ${emp.name}`, 'Empleados');
+          }
+          catch (e) { alert('Error: ' + e.message); }
+        },
+        true
+      );
+    } else {
+      try { 
+        await toggleEmpleadoActive(emp.id, true);
+        if (selected?.id === emp.id) setSelected(prev => ({ ...prev, active: true }));
+        await logAction('Activar Empleado', `Reactivó la cuenta de ${emp.name}`, 'Empleados');
+      }
+      catch (e) { alert('Error: ' + e.message); }
+    }
   }
 
   async function handleDeleteEmpleado(emp) {
@@ -530,7 +573,7 @@ export default function Empleados() {
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <button className="btn-secondary" style={{ width: '100%', textAlign: 'center' }}
                 onClick={() => selected && handleToggleActive(selected)}>
                 {selected?.active === false ? 'Activar' : 'Desactivar'}
@@ -759,6 +802,15 @@ export default function Empleados() {
                     {ROLES.map(r => <option key={r}>{r}</option>)}
                   </select>
                 </div>
+                {isGlobalAdmin && locales && locales.length > 0 && (
+                  <div className="form-group">
+                    <label className="form-label">Local Asignado</label>
+                    <select className="form-select" value={form.local_id || ''} onChange={e => setForm(f => ({ ...f, local_id: e.target.value }))}>
+                      <option value="">Global / Todos</option>
+                      {locales?.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Salario Mensual</label>
                   <input className="form-input" type="number" value={form.salary} onChange={e => setForm(f => ({ ...f, salary: e.target.value }))} />

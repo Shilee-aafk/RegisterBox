@@ -15,6 +15,29 @@ async function queueSync(table, action, data) {
 
 /* ==================== CATEGORIAS ==================== */
 export const db = {
+  locales: {
+    async getAll() {
+      const { data, error } = await supabase.from('locales').select('*').order('nombre');
+      if (error) throw error; return data;
+    },
+    async insert(loc) {
+      loc.id = loc.id || generateLocalId('locales');
+      loc.empresa_id = loc.empresa_id || getEmpresaId();
+      if (!loc.created_at) loc.created_at = new Date().toISOString();
+      await localDb.locales.add(loc);
+      await queueSync('locales', 'INSERT', loc);
+      return loc;
+    },
+    async update(id, updates) {
+      await localDb.locales.update(id, updates);
+      await queueSync('locales', 'UPDATE', { id, ...updates });
+      return { id, ...updates };
+    },
+    async delete(id) {
+      await localDb.locales.delete(id);
+      await queueSync('locales', 'DELETE', { id });
+    },
+  },
   categorias: {
     async getAll() {
       const { data, error } = await supabase.from('categorias').select('*').order('nombre');
@@ -215,31 +238,58 @@ export const db = {
     },
     async getEstadoHoy(empleado_id) {
       const tzoffset = (new Date()).getTimezoneOffset() * 60000;
-      const today = (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
-      const { data, error } = await supabase.from('asistencias_empleados').select('*').eq('empleado_id', empleado_id).eq('fecha', today).maybeSingle();
-      if (error) throw error; return data;
+      const now = new Date(Date.now() - tzoffset);
+      const today = now.toISOString().split('T')[0];
+      const days = ['dom','lun','mar','mie','jue','vie','sab'];
+      const dayKey = days[now.getDay()];
+
+      const { data: records, error } = await supabase.from('asistencias_empleados')
+        .select('*')
+        .eq('empleado_id', empleado_id)
+        .eq('fecha', today)
+        .order('created_at', { ascending: false });
+      if (error) throw error; 
+
+      const { data: turnos } = await supabase.from('horarios_empleados')
+        .select('*')
+        .eq('empleado_id', empleado_id)
+        .eq('dia_semana', dayKey);
+      
+      const maxTurnos = turnos ? turnos.length : 0;
+      const latest = records && records.length > 0 ? records[0] : null;
+
+      let nextAction = 'entrada';
+      if (!latest) {
+        nextAction = maxTurnos === 0 ? 'completado' : 'entrada';
+      } else if (!latest.hora_salida) {
+        nextAction = 'salida';
+      } else {
+        const completedCount = records.filter(r => r.hora_entrada && r.hora_salida).length;
+        nextAction = completedCount >= maxTurnos ? 'completado' : 'entrada';
+      }
+
+      return { nextAction, latestRecord: latest, maxTurnos };
     },
     async marcar(empleado_id) {
-      const hoy = await this.getEstadoHoy(empleado_id);
+      const estado = await this.getEstadoHoy(empleado_id);
       const tzoffset = (new Date()).getTimezoneOffset() * 60000;
       const now = new Date(Date.now() - tzoffset);
       const fecha = now.toISOString().split('T')[0];
-      const hora = now.toISOString().split('T')[1].substring(0, 5); // HH:mm
+      const hora = now.toISOString().split('T')[1].substring(0, 5);
 
-      if (!hoy) {
-        // Entrada
+      if (estado.nextAction === 'completado') {
+        return { action: 'completado', data: estado.latestRecord };
+      }
+
+      if (estado.nextAction === 'entrada') {
         const data = { id: generateLocalId('asistencias_empleados'), empleado_id, fecha, hora_entrada: hora, empresa_id: getEmpresaId() };
         const { error } = await supabase.from('asistencias_empleados').insert([data]);
         if (error) throw error;
         return { action: 'entrada', data };
-      } else if (!hoy.hora_salida) {
-        // Salida
-        const { error } = await supabase.from('asistencias_empleados').update({ hora_salida: hora }).eq('id', hoy.id);
-        if (error) throw error;
-        return { action: 'salida', data: { ...hoy, hora_salida: hora } };
       } else {
-        // Completado
-        return { action: 'completado', data: hoy };
+        const { error } = await supabase.from('asistencias_empleados').update({ hora_salida: hora }).eq('id', estado.latestRecord.id);
+        if (error) throw error;
+        return { action: 'salida', data: { ...estado.latestRecord, hora_salida: hora } };
       }
     }
   },

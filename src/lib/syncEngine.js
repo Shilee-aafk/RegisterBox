@@ -8,12 +8,16 @@ import { supabase } from './supabase';
 export async function syncDown() {
   try {
     const [
+      { data: locales, error: e_loc },
+      { data: categorias, error: e_cat },
       { data: productos, error: e1 },
       { data: clientes, error: e2 },
       { data: empleados, error: e3 },
       { data: citas, error: e4 },
       { data: transacciones, error: e5 }
     ] = await Promise.all([
+      supabase.from('locales').select('*'),
+      supabase.from('categorias').select('*'),
       supabase.from('productos').select('*'),
       supabase.from('clientes').select('*'),
       supabase.from('empleados').select('*'),
@@ -23,7 +27,9 @@ export async function syncDown() {
 
     // Solo reemplazar si la respuesta fue exitosa y tiene datos
     // Si Supabase devuelve null/error (por RLS, red, etc.), NO borrar lo local
-    await localDb.transaction('rw', [localDb.productos, localDb.clientes, localDb.empleados, localDb.citas, localDb.transacciones], async () => {
+    await localDb.transaction('rw', [localDb.locales, localDb.categorias, localDb.productos, localDb.clientes, localDb.empleados, localDb.citas, localDb.transacciones], async () => {
+      if (!e_loc && locales) { await localDb.locales.clear(); await localDb.locales.bulkAdd(locales); }
+      if (!e_cat && categorias) { await localDb.categorias.clear(); await localDb.categorias.bulkAdd(categorias); }
       if (!e1 && productos) { await localDb.productos.clear(); await localDb.productos.bulkAdd(productos); }
       if (!e2 && clientes) { await localDb.clientes.clear(); await localDb.clientes.bulkAdd(clientes); }
       if (!e3 && empleados) { await localDb.empleados.clear(); await localDb.empleados.bulkAdd(empleados); }

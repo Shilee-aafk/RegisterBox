@@ -17,6 +17,7 @@ import RegistroActividad from './pages/RegistroActividad';
 import Reportes from './pages/Reportes';
 import ConfirmModal from './components/ConfirmModal';
 import FirstTimeSetup from './pages/FirstTimeSetup';
+import Locales from './pages/Locales';
 import { Toaster, toast } from 'sonner';
 import { useApp } from './context/AppContext';
 
@@ -108,6 +109,7 @@ export default function App() {
               <Route path="/asistencia" element={<Asistencia />} />
               <Route path="/registro-actividad" element={<RegistroActividad />} />
               <Route path="/reportes" element={<Reportes />} />
+              <Route path="/locales" element={<Locales />} />
               <Route path="/configuracion" element={<Configuracion />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>

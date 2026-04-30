@@ -21,7 +21,7 @@ const CAT_ICONS = {
 const EMPTY_FORM = { desc: '', category: 'Ventas', amount: 0, type: 'ingreso' };
 
 export default function Finanzas() {
-  const { transacciones, addTransaccion, deleteTransaccion, formatCurrency: fmt } = useApp();
+  const { transacciones, addTransaccion, deleteTransaccion, formatCurrency: fmt, logAction } = useApp();
   const [filter, setFilter] = useState('Todas');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -72,6 +72,7 @@ export default function Finanzas() {
     setSaving(true);
     try {
       await addTransaccion({ description: form.desc, category: form.category, amount: +form.amount, type: form.type });
+      await logAction('Nueva Transacción', `Registró ${form.type} de ${fmt(+form.amount)} en ${form.category}`, 'Finanzas');
       setShowModal(false);
       setForm(EMPTY_FORM);
     } catch (e) { alert('Error: ' + e.message); }
@@ -80,7 +81,10 @@ export default function Finanzas() {
 
   async function deleteT(id) {
     if (!confirm('¿Eliminar esta transacción?')) return;
-    try { await deleteTransaccion(id); } catch (e) { alert('Error: ' + e.message); }
+    try { 
+      await deleteTransaccion(id); 
+      await logAction('Eliminar Transacción', `Eliminó una transacción financiera`, 'Finanzas');
+    } catch (e) { alert('Error: ' + e.message); }
   }
 
   async function handleDownloadExcel() {

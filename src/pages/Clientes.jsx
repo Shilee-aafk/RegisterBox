@@ -30,7 +30,7 @@ const ALL_TAGS = ['VIP', 'Premium', 'Frecuente', 'Nuevo'];
 const EMPTY_FORM = { name: '', email: '', phone: '', address: '', tags: [] };
 
 export default function Clientes() {
-  const { clientes, addCliente, updateCliente, deleteCliente, formatCurrency: fmt, confirmAction } = useApp();
+  const { clientes, addCliente, updateCliente, deleteCliente, formatCurrency: fmt, confirmAction, logAction } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -67,8 +67,10 @@ export default function Clientes() {
       if (editId) {
         const r = await updateCliente(editId, form);
         if (selected?.id === editId) setSelected(r);
+        await logAction('Editar Cliente', `Actualizó la información de ${form.name}`, 'Clientes');
       } else {
         await addCliente({ ...form, puntos: 0, total_compras: 0, num_compras: 0 });
+        await logAction('Crear Cliente', `Registró al nuevo cliente ${form.name}`, 'Clientes');
       }
       setShowModal(false);
     } catch (e) { alert('Error: ' + e.message); }
@@ -84,6 +86,7 @@ export default function Clientes() {
       async () => {
         try {
           await deleteCliente(id);
+          await logAction('Eliminar Cliente', `Borró al cliente ${cliente?.name} de la base de datos`, 'Clientes');
           if (selected?.id === id) setSelected(null);
         } catch (err) { alert('Error: ' + err.message); }
       }

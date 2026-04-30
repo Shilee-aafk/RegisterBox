@@ -248,9 +248,11 @@ export default function Inventario() {
     try {
       if (editCatId) {
         await updateCategoria(editCatId, { nombre: catForm.nombre, descuento_base: +catForm.descuento_base });
+        await logAction('Editar Categoría', `Actualizó la categoría: ${catForm.nombre}`, 'Inventario');
         showToast('ok', 'Categoría actualizada exitosamente');
       } else {
         await addCategoria({ nombre: catForm.nombre, descuento_base: +catForm.descuento_base });
+        await logAction('Crear Categoría', `Añadió nueva categoría: ${catForm.nombre}`, 'Inventario');
         showToast('ok', 'Categoría creada exitosamente');
       }
       openNewCat();
@@ -266,6 +268,7 @@ export default function Inventario() {
     confirmAction('Eliminar Categoría', `¿Estás seguro que deseas eliminar la categoría "${c.nombre}"?`, async () => {
       try {
         await deleteCategoria(c.id);
+        await logAction('Eliminar Categoría', `Borró la categoría: ${c.nombre}`, 'Inventario');
         showToast('ok', 'Categoría eliminada');
       } catch (e) { showToast('error', 'Error eliminando: ' + e.message); }
     });

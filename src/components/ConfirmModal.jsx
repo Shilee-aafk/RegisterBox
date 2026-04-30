@@ -53,7 +53,7 @@ export default function ConfirmModal() {
               color: '#fff', boxShadow: 'none'
             }}
           >
-            {confirmDialog.isDestructive ? 'Sí, eliminar' : 'Confirmar'}
+            {confirmDialog.isDestructive ? 'Sí, Desactivar' : 'Confirmar'}
           </button>
         </div>
       </div>

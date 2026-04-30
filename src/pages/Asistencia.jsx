@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Clock, CheckCircle2, Loader2 } from 'lucide-react';
 
 export default function Asistencia() {
-  const { currentUser, marcarAsistencia, obtenerEstadoAsistenciaHoy } = useApp();
+  const { currentUser, marcarAsistencia, obtenerEstadoAsistenciaHoy, logAction } = useApp();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
@@ -14,13 +14,11 @@ export default function Asistencia() {
   const checkStatus = async () => {
     setLoading(true);
     try {
-      const record = await obtenerEstadoAsistenciaHoy();
-      if (!record) {
-        setActionType('entrada');
-      } else if (!record.hora_salida) {
-        setActionType('salida');
+      const estado = await obtenerEstadoAsistenciaHoy();
+      if (estado) {
+        setActionType(estado.nextAction);
       } else {
-        setActionType('completado');
+        setActionType('entrada');
       }
     } catch (e) {
       console.error(e);
@@ -43,9 +41,11 @@ export default function Asistencia() {
       if (action === 'entrada') {
         msg = `Entrada registrada a las ${data.hora_entrada}`;
         setActionType('salida');
+        await logAction('Asistencia Entrada', `Registró entrada al sistema`, 'Asistencia');
       } else if (action === 'salida') {
         msg = `Salida registrada a las ${data.hora_salida}`;
         setActionType('completado');
+        await logAction('Asistencia Salida', `Registró salida del sistema`, 'Asistencia');
       } else {
         msg = `Ya completaste tu turno hoy.`;
         setActionType('completado');

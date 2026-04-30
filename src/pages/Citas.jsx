@@ -28,7 +28,7 @@ const STATUS_COLORS = {
 const EMPTY_FORM = { service: '', client_name: '', date: isoDate(new Date()), time: '09:00', duration: 30, price: 0, empleado_name: '' };
 
 export default function Citas() {
-  const { citas, addCita, updateCita, deleteCita, productos, clientes, addCliente, empleados, formatCurrency: fmt, confirmAction } = useApp();
+  const { citas, addCita, updateCita, deleteCita, productos, clientes, addCliente, empleados, formatCurrency: fmt, confirmAction, logAction } = useApp();
   const [today] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekStart, setWeekStart] = useState(() => {
@@ -104,8 +104,10 @@ export default function Citas() {
       const payload = { service: form.service, client_name: form.client_name, date: form.date, time: form.time, duration: +form.duration, price: +form.price, empleado_name: form.empleado_name, status: 'pendiente' };
       if (editId) {
         await updateCita(editId, payload);
+        await logAction('Editar Cita', `Editó la cita de ${form.client_name} para el servicio ${form.service}`, 'Citas');
       } else {
         await addCita(payload);
+        await logAction('Agendar Cita', `Agendó cita a ${form.client_name} para ${form.service}`, 'Citas');
       }
       setShowModal(false);
     } catch (e) { alert('Error: ' + e.message); }
@@ -122,6 +124,7 @@ export default function Citas() {
         phone: newClientData.phone.trim() || null, 
         total_compras: 0, num_compras: 0, puntos: 0 
       });
+      await logAction('Crear Cliente (Citas)', `Registró cliente rápido: ${newClientData.name.trim()}`, 'Citas');
       setForm(f => ({ ...f, client_name: newClientData.name.trim() }));
       setShowNewClientForm(false);
       setNewClientData({ name: '', phone: '', email: '' });
@@ -132,7 +135,11 @@ export default function Citas() {
   async function toggleStatus(id) {
     const cita = citas.find(c => c.id === id);
     if (!cita) return;
-    try { await updateCita(id, { status: cita.status === 'pendiente' ? 'completada' : 'pendiente' }); }
+    try { 
+      const newStatus = cita.status === 'pendiente' ? 'completada' : 'pendiente';
+      await updateCita(id, { status: newStatus }); 
+      await logAction('Estado de Cita', `Cambió estado de la cita de ${cita.client_name} a ${newStatus}`, 'Citas');
+    }
     catch(e) { alert('Error: ' + e.message); }
   }
 
@@ -141,7 +148,11 @@ export default function Citas() {
       'Cancelar Cita',
       '¿Estás seguro que deseas eliminar o cancelar esta cita permanentemente?',
       async () => {
-        try { await deleteCita(id); }
+        try { 
+          await deleteCita(id); 
+          const c = citas.find(c => c.id === id);
+          await logAction('Cancelar Cita', `Canceló o eliminó la cita de ${c?.client_name}`, 'Citas');
+        }
         catch(e) { alert('Error: ' + e.message); }
       }
     );

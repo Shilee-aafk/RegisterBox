@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { db } from '../lib/db';
 import { localDb } from '../lib/localDb';
@@ -13,17 +13,26 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
-  const [categorias, setCategorias] = useState([]);
-  const [productos, setProductos] = useState([]);
-  const [clientes, setClientes] = useState([]);
-  const [empleados, setEmpleados] = useState([]);
-  const [citas, setCitas] = useState([]);
-  const [transacciones, setTransacciones] = useState([]);
+  const [allLocales, setAllLocales] = useState([]);
+  const [allCategorias, setAllCategorias] = useState([]);
+  const [allProductos, setAllProductos] = useState([]);
+  const [allClientes, setAllClientes] = useState([]);
+  const [allEmpleados, setAllEmpleados] = useState([]);
+  const [allCitas, setAllCitas] = useState([]);
+  const [allTransacciones, setAllTransacciones] = useState([]);
+  const [adminLocalFilter, setAdminLocalFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState('connecting'); // 'connecting' | 'connected' | 'error'
   const [error, setError] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('current_user');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [empresaId, setEmpresaId] = useState(() => localStorage.getItem('empresa_id') || null);
   const [empresaTipo, setEmpresaTipo] = useState(() => localStorage.getItem('empresa_tipo') || 'mixto');
   const [firstTimeSetup, setFirstTimeSetup] = useState(false); // true cuando la empresa no tiene empleados
@@ -61,6 +70,42 @@ export function AppProvider({ children }) {
       return next;
     });
   }, []);
+
+  /* ============================
+     COMPUTED / HELPERS
+  ============================ */
+  // Si el Admin selecciona 'ALL', activeLocalId será null (muestra todo)
+  const isGlobalAdmin = currentUser && (currentUser.role === 'Administrador' || currentUser.role === 'Gerente');
+  const activeLocalId = isGlobalAdmin ? (adminLocalFilter === 'ALL' ? null : adminLocalFilter) : (currentUser ? currentUser.local_id : null);
+
+  const filterByLocal = useCallback((arr) => {
+    if (!arr) return [];
+    if (!activeLocalId) return arr; // Muestra todo
+    return arr.filter(item => !item.local_id || item.local_id === activeLocalId);
+  }, [activeLocalId]);
+
+  const categorias = useMemo(() => filterByLocal(allCategorias), [allCategorias, filterByLocal]);
+  const productos = useMemo(() => filterByLocal(allProductos), [allProductos, filterByLocal]);
+  const clientes = useMemo(() => filterByLocal(allClientes), [allClientes, filterByLocal]);
+  const empleados = useMemo(() => filterByLocal(allEmpleados), [allEmpleados, filterByLocal]);
+  const citas = useMemo(() => filterByLocal(allCitas), [allCitas, filterByLocal]);
+  const transacciones = useMemo(() => filterByLocal(allTransacciones), [allTransacciones, filterByLocal]);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const ventasHoy = (transacciones || [])
+    .filter(t => t.type === 'ingreso' && t.created_at && t.created_at.startsWith(today))
+    .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+  const transaccionesHoy = (transacciones || []).filter(
+    t => t.type === 'ingreso' && t.created_at?.startsWith(today)
+  ).length;
+
+  const citasHoy = (citas || []).filter(c => c.date === today);
+
+  const stockAlerts = (productos || []).filter(
+    p => p.stock < p.min_stock
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -103,7 +148,8 @@ export function AppProvider({ children }) {
   const fetchAll = useCallback(async () => {
     try {
       // 1. Cargar local primero (Lectura ultrarrápida offline)
-      const [cat, p, c, e, ci, t] = await Promise.all([
+      const [loc, cat, p, c, e, ci, t] = await Promise.all([
+        localDb.locales.toArray(),
         localDb.categorias.toArray(),
         localDb.productos.toArray(),
         localDb.clientes.toArray(),
@@ -111,19 +157,20 @@ export function AppProvider({ children }) {
         localDb.citas.toArray(),
         localDb.transacciones.toArray()
       ]);
-      setCategorias(cat.sort((a,b) => a.nombre.localeCompare(b.nombre)));
-      setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
-      setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
-      setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
-      setCitas(ci.sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
-      setTransacciones(t.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
+      setAllLocales((loc || []).sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '')));
+      setAllCategorias((cat || []).sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '')));
+      setAllProductos((p || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+      setAllClientes((c || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+      setAllEmpleados((e || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+      setAllCitas((ci || []).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '')));
+      setAllTransacciones((t || []).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)));
       setConnected(true);
       setError(null);
     } catch (err) {
       console.error('Error loading local data:', err);
       // Fallback a Supabase si Dexie falla por alguna razón
-      const [cat, p, c, e, ci, t] = await Promise.all([ db.categorias.getAll(), db.productos.getAll(), db.clientes.getAll(), db.empleados.getAll(), db.citas.getAll(), db.transacciones.getAll() ]);
-      setCategorias(cat || []); setProductos(p || []); setClientes(c || []); setEmpleados(e || []); setCitas(ci || []); setTransacciones(t || []);
+      const [loc, cat, p, c, e, ci, t] = await Promise.all([ db.locales.getAll(), db.categorias.getAll(), db.productos.getAll(), db.clientes.getAll(), db.empleados.getAll(), db.citas.getAll(), db.transacciones.getAll() ]);
+      setAllLocales(loc || []); setAllCategorias(cat || []); setAllProductos(p || []); setAllClientes(c || []); setAllEmpleados(e || []); setAllCitas(ci || []); setAllTransacciones(t || []);
     } finally {
       setLoading(false);
     }
@@ -133,15 +180,16 @@ export function AppProvider({ children }) {
       try {
         await syncUp(); // PRIMERO subir cualquier cambio local pendiente
         await syncDown(); // LUEGO descargar la info más reciente
-        const [cat, p, c, e, ci, t] = await Promise.all([
-          localDb.categorias.toArray(), localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
+        const [loc, cat, p, c, e, ci, t] = await Promise.all([
+          localDb.locales.toArray(), localDb.categorias.toArray(), localDb.productos.toArray(), localDb.clientes.toArray(), localDb.empleados.toArray(), localDb.citas.toArray(), localDb.transacciones.toArray()
         ]);
-        setCategorias(cat.sort((a,b) => a.nombre.localeCompare(b.nombre)));
-        setProductos(p.sort((a,b) => a.name.localeCompare(b.name)));
-        setClientes(c.sort((a,b) => a.name.localeCompare(b.name)));
-        setEmpleados(e.sort((a,b) => a.name.localeCompare(b.name)));
-        setCitas(ci.sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
-        setTransacciones(t.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
+        setAllLocales((loc || []).sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '')));
+        setAllCategorias((cat || []).sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '')));
+        setAllProductos((p || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+        setAllClientes((c || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+        setAllEmpleados((e || []).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+        setAllCitas((ci || []).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '')));
+        setAllTransacciones((t || []).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)));
       } catch (e) {
         console.log('Sync Error:', e);
       }
@@ -267,79 +315,101 @@ export function AppProvider({ children }) {
   }, [fetchAll]);
 
   /* ============================
+     LOCALES CRUD
+  ============================ */
+  async function addLocal(data) {
+    const r = await db.locales.insert(data);
+    setAllLocales(prev => [...prev, r].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    return r;
+  }
+  async function updateLocal(id, data) {
+    const r = await db.locales.update(id, data);
+    setAllLocales(prev => prev.map(l => l.id === id ? { ...l, ...data } : l).sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    return r;
+  }
+  async function deleteLocal(id) {
+    await db.locales.delete(id);
+    setAllLocales(prev => prev.filter(l => l.id !== id));
+  }
+
+  /* ============================
      CATEGORIAS CRUD
   ============================ */
   async function addCategoria(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.categorias.insert(data);
-    setCategorias(prev => [...prev, r].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setAllCategorias(prev => [...prev, r].sort((a, b) => a.nombre.localeCompare(b.nombre)));
     return r;
   }
   async function updateCategoria(id, data) {
     const r = await db.categorias.update(id, data);
-    setCategorias(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    setAllCategorias(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     return r;
   }
   async function deleteCategoria(id) {
     await db.categorias.delete(id);
-    setCategorias(prev => prev.filter(c => c.id !== id));
+    setAllCategorias(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
      PRODUCTOS CRUD
   ============================ */
   async function addProducto(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.productos.insert(data);
-    setProductos(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    setAllProductos(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateProducto(id, data) {
     const r = await db.productos.update(id, data);
-    setProductos(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+    setAllProductos(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     return r;
   }
   async function deleteProducto(id) {
     await db.productos.delete(id);
-    setProductos(prev => prev.filter(p => p.id !== id));
+    setAllProductos(prev => prev.filter(p => p.id !== id));
   }
 
   /* ============================
      CLIENTES CRUD
   ============================ */
   async function addCliente(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.clientes.insert(data);
-    setClientes(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    setAllClientes(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateCliente(id, data) {
     const r = await db.clientes.update(id, data);
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    setAllClientes(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     return r;
   }
   async function deleteCliente(id) {
     await db.clientes.delete(id);
-    setClientes(prev => prev.filter(c => c.id !== id));
+    setAllClientes(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
      EMPLEADOS CRUD
   ============================ */
   async function addEmpleado(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.empleados.insert(data);
-    setEmpleados(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
+    setAllEmpleados(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)));
     return r;
   }
   async function updateEmpleado(id, data) {
     const r = await db.empleados.update(id, data);
-    setEmpleados(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
+    setAllEmpleados(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
     return r;
   }
   async function toggleEmpleadoActive(id, active) {
     await db.empleados.toggleActive(id, active);
-    setEmpleados(prev => prev.map(e => e.id === id ? { ...e, active } : e));
+    setAllEmpleados(prev => prev.map(e => e.id === id ? { ...e, active } : e));
   }
   async function deleteEmpleado(id) {
     await db.empleados.delete(id);
-    setEmpleados(prev => prev.filter(e => e.id !== id));
+    setAllEmpleados(prev => prev.filter(e => e.id !== id));
   }
 
   /* ============================
@@ -379,31 +449,33 @@ export function AppProvider({ children }) {
      CITAS CRUD
   ============================ */
   async function addCita(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.citas.insert(data);
-    setCitas(prev => [...prev, r].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
+    setAllCitas(prev => [...prev, r].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
     return r;
   }
   async function updateCita(id, data) {
     const r = await db.citas.update(id, data);
-    setCitas(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    setAllCitas(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     return r;
   }
   async function deleteCita(id) {
     await db.citas.delete(id);
-    setCitas(prev => prev.filter(c => c.id !== id));
+    setAllCitas(prev => prev.filter(c => c.id !== id));
   }
 
   /* ============================
      TRANSACCIONES CRUD
   ============================ */
   async function addTransaccion(data) {
+    if (activeLocalId && !data.local_id) data.local_id = activeLocalId;
     const r = await db.transacciones.insert(data);
-    setTransacciones(prev => [r, ...prev]);
+    setAllTransacciones(prev => [r, ...prev]);
     return r;
   }
   async function deleteTransaccion(id) {
     await db.transacciones.delete(id);
-    setTransacciones(prev => prev.filter(t => t.id !== id));
+    setAllTransacciones(prev => prev.filter(t => t.id !== id));
   }
 
   /* ============================
@@ -420,6 +492,7 @@ export function AppProvider({ children }) {
 
     // 1. Crear transacción (Realtime la propagará a todos)
     await db.transacciones.insert({
+      local_id: activeLocalId || undefined,
       description: desc,
       category: tipoVenta,
       amount: total,
@@ -583,24 +656,8 @@ export function AppProvider({ children }) {
   }, []);
 
   /* ============================
-     COMPUTED / HELPERS
+     FORMATTERS
   ============================ */
-  const today = new Date().toISOString().split('T')[0];
-
-  const ventasHoy = (transacciones || [])
-    .filter(t => t.type === 'ingreso' && t.created_at && t.created_at.startsWith(today))
-    .reduce((s, t) => s + Number(t.amount || 0), 0);
-
-  const transaccionesHoy = transacciones.filter(
-    t => t.type === 'ingreso' && t.created_at?.startsWith(today)
-  ).length;
-
-  const citasHoy = citas.filter(c => c.date === today);
-
-  const stockAlerts = productos.filter(
-    p => p.stock < p.min_stock
-  );
-
   const formatCurrency = useCallback((amount) => {
     const m = config?.regional?.moneda || 'CLP';
     const num = Number(amount) || 0;
@@ -622,12 +679,16 @@ export function AppProvider({ children }) {
 
   const value = {
     /* State */
+    locales: allLocales,
+    adminLocalFilter, setAdminLocalFilter, activeLocalId, isGlobalAdmin,
     categorias, productos, clientes, empleados, citas, transacciones,
     loading, connected, realtimeStatus, error, config, currentUser, empresaId, empresaTipo, firstTimeSetup,
     /* Computed */
     ventasHoy, transaccionesHoy, citasHoy, stockAlerts, formatCurrency,
     /* Config */
     updateConfig,
+    /* Locales */
+    addLocal, updateLocal, deleteLocal,
     /* Categorias */
     addCategoria, updateCategoria, deleteCategoria,
     /* Productos */
