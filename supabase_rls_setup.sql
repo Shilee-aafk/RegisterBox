@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.empresas (
 -- Ejecuta cada ALTER TABLE por separado si hay errores
 -- =====================================================
 ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE;
+ALTER TABLE public.categorias ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE;
 ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE;
 ALTER TABLE public.empleados ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE;
 ALTER TABLE public.citas ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE;
@@ -49,6 +50,7 @@ $$;
 -- PASO 5: Activar RLS en todas las tablas
 -- =====================================================
 ALTER TABLE public.productos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categorias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.empleados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.citas ENABLE ROW LEVEL SECURITY;
@@ -65,6 +67,10 @@ ALTER TABLE public.perfiles_empresa ENABLE ROW LEVEL SECURITY;
 
 -- Productos
 CREATE POLICY "empresas_ven_sus_productos" ON public.productos
+  FOR ALL USING (empresa_id = get_empresa_id());
+
+-- Categorias
+CREATE POLICY "empresas_ven_sus_categorias" ON public.categorias
   FOR ALL USING (empresa_id = get_empresa_id());
 
 -- Clientes
