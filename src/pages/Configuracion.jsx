@@ -71,24 +71,9 @@ function ToggleRow({ label, desc, checked, onChange, id, noBorder }) {
 }
 
 export default function Configuracion() {
-  const { connected, error, config, updateConfig, isGlobalAdmin, locales, addLocal } = useApp();
+  const { connected, error, config, updateConfig } = useApp();
   const [saved, setSaved] = useState(false);
   const { biz, notifs, appearance, regional, payments, security } = config;
-
-  const [newLocalName, setNewLocalName] = useState('');
-  const [newLocalAddress, setNewLocalAddress] = useState('');
-
-  async function handleAddLocal() {
-    if (!newLocalName) return toast.error('El nombre del local es obligatorio');
-    try {
-      await addLocal({ nombre: newLocalName, direccion: newLocalAddress });
-      setNewLocalName('');
-      setNewLocalAddress('');
-      toast.success('Local agregado exitosamente');
-    } catch(e) {
-      toast.error('Error al agregar local: ' + e.message);
-    }
-  }
 
   function handleSave() {
     setSaved(true);
@@ -152,35 +137,7 @@ export default function Configuracion() {
         </button>
       </Section>
 
-      {/* === Gestión de Locales (Solo Admin Global) === */}
-      {isGlobalAdmin && (
-        <Section icon={MapPin} title="Gestión de Locales" subtitle="Administra las sucursales de tu empresa" iconBg="#f3e8ff" iconColor="#a855f7">
-          <div style={{ marginBottom: 20 }}>
-            {locales?.map(loc => (
-              <div key={loc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '8px' }}>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: '14px' }}>{loc.nombre} {loc.nombre === 'Local Principal' && <span style={{fontSize: 10, background: '#fce7f3', color: '#be185d', padding: '2px 6px', borderRadius: 99, marginLeft: 6}}>Default</span>}</p>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{loc.direccion || 'Sin dirección registrada'}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ background: '#f9fafb', padding: '16px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-            <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Agregar Nuevo Local</p>
-            <div className="form-row" style={{ marginBottom: 10 }}>
-              <div className="form-group">
-                <input className="form-input" placeholder="Nombre del Local" value={newLocalName} onChange={e => setNewLocalName(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <input className="form-input" placeholder="Dirección (Opcional)" value={newLocalAddress} onChange={e => setNewLocalAddress(e.target.value)} />
-              </div>
-            </div>
-            <button className="btn-primary" onClick={handleAddLocal} style={{ width: '100%', justifyContent: 'center' }}>
-              + Crear Sucursal
-            </button>
-          </div>
-        </Section>
-      )}
+
 
       {/* === Notificaciones === */}
       <Section icon={Bell} title="Notificaciones" subtitle="Configura cómo y cuándo recibir alertas">

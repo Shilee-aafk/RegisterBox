@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import ExcelJS from 'exceljs';
 import { useApp } from '../context/AppContext';
+import CustomSelect from '../components/CustomSelect';
 
 
 const CAT_ICONS = {
@@ -25,6 +26,7 @@ export default function Finanzas() {
   const [filter, setFilter] = useState('Todas');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [customCategory, setCustomCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({ 
@@ -69,12 +71,20 @@ export default function Finanzas() {
 
   async function handleAdd() {
     if (!form.desc.trim()) return;
+    
+    let finalCategory = form.category;
+    if (form.category === 'Otro') {
+      if (!customCategory.trim()) return alert('Debes ingresar el motivo de la transacción.');
+      finalCategory = customCategory.trim();
+    }
+
     setSaving(true);
     try {
-      await addTransaccion({ description: form.desc, category: form.category, amount: +form.amount, type: form.type });
-      await logAction('Nueva Transacción', `Registró ${form.type} de ${fmt(+form.amount)} en ${form.category}`, 'Finanzas');
+      await addTransaccion({ description: form.desc, category: finalCategory, amount: +form.amount, type: form.type });
+      await logAction('Nueva Transacción', `Registró ${form.type} de ${fmt(+form.amount)} en ${finalCategory}`, 'Finanzas');
       setShowModal(false);
       setForm(EMPTY_FORM);
+      setCustomCategory('');
     } catch (e) { alert('Error: ' + e.message); }
     setSaving(false);
   }
@@ -163,6 +173,20 @@ export default function Finanzas() {
     setShowExportModal(false);
   }
 
+  const uniqueCategories = Array.from(new Set(transacciones.map(t => t.category)))
+    .filter(cat => !['Ventas', 'Inventario', 'Servicios', 'Nómina', 'Otro'].includes(cat));
+
+  const filterOptions = [
+    { value: 'Todas', label: 'Todas' },
+    { value: 'Ingresos', label: 'Ingresos' },
+    { value: 'Gastos', label: 'Gastos' },
+    { value: 'Ventas', label: 'Ventas' },
+    { value: 'Inventario', label: 'Inventario' },
+    { value: 'Servicios', label: 'Servicios' },
+    { value: 'Nómina', label: 'Nómina' },
+    ...uniqueCategories.map(cat => ({ value: cat, label: cat }))
+  ];
+
   return (
     <div className="page-content">
       {/* Stats */}
@@ -237,21 +261,16 @@ export default function Finanzas() {
       </div>
 
       {/* Transactions table */}
-      <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,.06)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,.06)', overflow: 'visible' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Transacciones</h2>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div className="filter-select">
-              <SlidersHorizontal size={13} color="var(--text-muted)" />
-              <select value={filter} onChange={e => setFilter(e.target.value)} id="fin-filter">
-                <option>Todas</option>
-                <option>Ingresos</option>
-                <option>Gastos</option>
-                <option>Ventas</option>
-                <option>Inventario</option>
-                <option>Servicios</option>
-                <option>Nómina</option>
-              </select>
+            <div className="filter-select" style={{ minWidth: 150 }}>
+              <CustomSelect 
+                value={filter} 
+                onChange={val => setFilter(val)} 
+                options={filterOptions} 
+              />
             </div>
             <button className="btn-secondary" onClick={() => setShowExportModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Download size={14} /> Exportar
@@ -320,24 +339,45 @@ export default function Finanzas() {
                 <input className="form-input" placeholder="Descripción de la transacción" value={form.desc} onChange={e => setForm(f => ({ ...f, desc: e.target.value }))} autoFocus id="fin-modal-desc" />
               </div>
               <div className="form-row">
-                <div className="form-group">
+                <div className="form-group" style={{ zIndex: 110 }}>
                   <label className="form-label">Tipo</label>
-                  <select className="form-select" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                    <option value="ingreso">Ingreso</option>
-                    <option value="gasto">Gasto</option>
-                  </select>
+                  <CustomSelect 
+                    value={form.type} 
+                    onChange={val => setForm(f => ({ ...f, type: val }))}
+                    options={[
+                      { value: 'ingreso', label: 'Ingreso' },
+                      { value: 'gasto', label: 'Gasto' }
+                    ]}
+                  />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Categoría</label>
-                  <select className="form-select" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                    <option>Ventas</option>
-                    <option>Inventario</option>
-                    <option>Servicios</option>
-                    <option>Nómina</option>
-                    <option>Otro</option>
-                  </select>
+                <div className="form-group" style={{ zIndex: 100 }}>
+                  <label className="form-label">Categoría / Motivo</label>
+                  <CustomSelect 
+                    value={form.category} 
+                    onChange={val => setForm(f => ({ ...f, category: val }))}
+                    options={[
+                      { value: 'Ventas', label: 'Ventas' },
+                      { value: 'Inventario', label: 'Inventario' },
+                      { value: 'Servicios', label: 'Servicios' },
+                      { value: 'Nómina', label: 'Nómina' },
+                      { value: 'Otro', label: 'Otro' }
+                    ]}
+                  />
                 </div>
               </div>
+              
+              {form.category === 'Otro' && (
+                <div className="form-group" style={{ animation: 'dropSlideDown 0.2s ease-out' }}>
+                  <label className="form-label">Ingresar Motivo</label>
+                  <input 
+                    className="form-input" 
+                    placeholder="Ej: Pago de Luz, Alquiler..." 
+                    value={customCategory} 
+                    onChange={e => setCustomCategory(e.target.value)} 
+                    autoFocus
+                  />
+                </div>
+              )}
               <div className="form-group">
                 <label className="form-label">Monto</label>
                 <input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} min={0} />
