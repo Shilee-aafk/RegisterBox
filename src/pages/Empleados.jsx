@@ -343,7 +343,7 @@ export default function Empleados() {
     try {
       if (editId) {
         const r = await updateEmpleado(editId, { ...form, salary: +form.salary });
-        if (selected?.id === editId) setSelected(r);
+        if (selected?.id === editId) setSelected({ ...selected, ...r });
         await logAction('Editar Empleado', `Modificó los datos de ${form.name}`, 'Empleados');
       } else {
         await addEmpleado({ ...form, salary: +form.salary, ventas: 0, total_vendido: 0, schedule, active: true });

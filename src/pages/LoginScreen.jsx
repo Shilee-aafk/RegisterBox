@@ -72,7 +72,7 @@ export default function LoginScreen() {
       try {
         setSaving(true);
         const updatedUser = await updateEmpleado(pendingUser.id, { pin: newPin });
-        forceLogin({ ...updatedUser, active: true });
+        forceLogin({ ...pendingUser, ...updatedUser, active: true });
       } catch (err) {
         setError('Error al guardar. Intenta de nuevo.');
         setSaving(false);
